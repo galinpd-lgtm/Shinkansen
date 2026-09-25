@@ -1,6 +1,7 @@
 {
   "city": "Варна",
-  "venue": "Летен театър",
+  "venue": "Летен театър — Дворец на културата и спорта, Варна",
+  "venue_en": "Summer Theatre — Palace of Culture and Sports, Varna",
   "lat": 43.2141,
   "lon": 27.9147,
   "timezone": "Europe/Sofia",
@@ -12,6 +13,11 @@
   "sources": ["open-meteo:icon_seamless", "open-meteo:gfs_seamless", "open-meteo:ecmwf_ifs025", "met-norway", "7timer"],
   "output": "./out/forecast.json",
   "events": [
-    { "date": "2026-06-20", "start": "20:30", "title": "Примерна проява" }
+    { "date": "2026-06-20", "start": "20:30", "title": "Примерна проява", "title_en": "Sample event" },
+    { "date": "2026-09-26", "start": "20:30", "title": "Първата вечер на Shinkansen", "title_en": "Shinkansen's first night" }
+  ],
+  "recurring": [
+    { "weekday": "fri", "start": "20:30", "title": "Петъчна вечер на открито", "title_en": "Friday open-air evening" },
+    { "weekday": "sat", "start": "20:30", "title": "Съботна вечер на открито", "title_en": "Saturday open-air evening" }
   ]
 }

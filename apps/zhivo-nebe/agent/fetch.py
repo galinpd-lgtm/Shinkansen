@@ -332,6 +332,45 @@ def scene_of(recs, th):
     return "clear"
 
 
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def in_season(d, season):
+    """Попада ли датата в сезона {"from": "ММ-ДД", "to": "ММ-ДД"} (двата края включително).
+    Сезон през Нова година (from > to, напр. 11-01 → 02-28) също работи. Без сезон — винаги."""
+    if not season:
+        return True
+    lo = tuple(int(x) for x in season["from"].split("-"))
+    hi = tuple(int(x) for x in season["to"].split("-"))
+    md = (d.month, d.day)
+    return lo <= md <= hi if lo <= hi else (md >= lo or md <= hi)
+
+
+def expand_events(cfg, first_day, days):
+    """Проявите от конфигурацията: еднократните (events) плюс повторенията (recurring),
+    разгърнати за дните first_day … first_day + days. Ако на същата дата и час има
+    еднократна проява, повторението се пропуска. Връща записи {date, start, title[, title_en]}."""
+    out = [dict(ev) for ev in cfg.get("events", [])]
+    taken = {(ev["date"], ev.get("start", "00:00")) for ev in out}
+    for rule in cfg.get("recurring", []):
+        wanted = rule["weekday"] if isinstance(rule["weekday"], list) else [rule["weekday"]]
+        bad = [w for w in wanted if w not in WEEKDAYS]
+        if bad:
+            raise ValueError(f"непознат ден в recurring: {bad} (очаква се {', '.join(WEEKDAYS)})")
+        idx = {WEEKDAYS.index(w) for w in wanted}
+        for k in range(days + 1):
+            d = first_day + timedelta(days=k)
+            key = (d.isoformat(), rule.get("start", "00:00"))
+            if d.weekday() not in idx or not in_season(d, rule.get("season")) or key in taken:
+                continue
+            taken.add(key)
+            ev = {"date": key[0], "start": key[1], "title": rule.get("title", "")}
+            if rule.get("title_en"):
+                ev["title_en"] = rule["title_en"]
+            out.append(ev)
+    return out
+
+
 def local_iso(dt, tz):
     return dt.astimezone(tz).isoformat(timespec="minutes")
 
@@ -380,35 +419,45 @@ def build_forecast(cfg, fetcher=http_get, sleep=time.sleep, now=None, log=None):
     win = cfg.get("event_window", {})
     before, after = win.get("before_h", 1), win.get("after_h", 3)
     events = []
-    for ev in cfg.get("events", []):
+    for ev in expand_events(cfg, now.astimezone(tz).date(), FORECAST_DAYS):
         t0 = datetime.fromisoformat(f"{ev['date']}T{ev.get('start', '00:00')}").replace(tzinfo=tz)
         w_start = (t0 - timedelta(hours=before)).astimezone(UTC).replace(minute=0)
         w_end = t0.astimezone(UTC) + timedelta(hours=after)
         if w_end <= now:
             continue  # отминала проява
         recs = [combined[dt] for dt in all_hours if w_start <= dt < w_end]
-        events.append({
-            "title": ev.get("title", ""),
+        item = {"title": ev.get("title", "")}
+        if ev.get("title_en"):
+            item["title_en"] = ev["title_en"]
+        item.update({
             "start": local_iso(t0, tz),
             # извън хоризонта на прогнозата → null, сайтът показва „още няма прогноза“
             "risk": RISK_LEVELS[risk_of(recs, th)] if recs else None,
             "scene": scene_of(recs, th) if recs else None,
         })
+        events.append(item)
     events.sort(key=lambda e: e["start"])
 
-    return {
+    fc = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now.astimezone(tz).isoformat(timespec="seconds"),
         "city": cfg.get("city", ""),
         "lat": cfg.get("lat"),
         "lon": cfg.get("lon"),
+    }
+    # мястото — по избор, на два езика; сайтът пада към venue, ако venue_en липсва
+    for key in ("venue", "venue_en"):
+        if cfg.get(key):
+            fc[key] = cfg[key]
+    fc.update({
         "sources_ok": list(ok),
         "sources_failed": failed,
         "hours": hours,
         "days": days,
         "events": events,
         "summary": summarize(cfg, days, voters, events, list(ok), failed),
-    }
+    })
+    return fc
 
 
 # ---------------------------------------------------------------- текст по правила
