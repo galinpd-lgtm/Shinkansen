@@ -1,0 +1,17 @@
+{
+  "city": "Варна",
+  "venue": "Летен театър",
+  "lat": 43.2141,
+  "lon": 27.9147,
+  "timezone": "Europe/Sofia",
+  "event_window": { "before_h": 1, "after_h": 3 },
+  "thresholds": {
+    "high":   { "precip_pct": 70, "gust_kmh": 50, "temp_c": 35, "thunder": true },
+    "medium": { "precip_pct": 40, "gust_kmh": 35, "temp_c": 33 }
+  },
+  "sources": ["open-meteo:icon_seamless", "open-meteo:gfs_seamless", "open-meteo:ecmwf_ifs025", "met-norway", "7timer"],
+  "output": "./out/forecast.json",
+  "events": [
+    { "date": "2026-06-20", "start": "20:30", "title": "Примерна проява" }
+  ]
+}
