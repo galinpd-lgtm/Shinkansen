@@ -12,7 +12,7 @@ import tempfile
 import unittest
 import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -107,8 +107,9 @@ def build(net):
 
 class SchemaMixin:
     def assert_schema(self, fc):
-        self.assertEqual(set(fc), {"schema_version", "generated_at", "city", "lat", "lon",
-                                   "sources_ok", "sources_failed", "hours", "days", "events", "summary"})
+        required = {"schema_version", "generated_at", "city", "lat", "lon",
+                    "sources_ok", "sources_failed", "hours", "days", "events", "summary"}
+        self.assertTrue(required <= set(fc) <= required | {"venue", "venue_en"})
         self.assertEqual(fc["schema_version"], "2")
         self.assertEqual(fc["city"], "Варна")
         datetime.fromisoformat(fc["generated_at"])
@@ -121,7 +122,7 @@ class SchemaMixin:
             self.assertIn(d["risk"], ("low", "medium", "high"))
             self.assertIn(d["confidence"], ("low", "medium", "high"))
         for e in fc["events"]:
-            self.assertEqual(set(e), {"title", "start", "risk", "scene"})
+            self.assertIn(set(e), ({"title", "start", "risk", "scene"}, {"title", "title_en", "start", "risk", "scene"}))
             self.assertIn(e["risk"], ("low", "medium", "high", None))
             self.assertIn(e["scene"], ("clear", "clouds", "rain", "storm", "heat", "snow", None))
         self.assertTrue(fc["summary"])
@@ -451,6 +452,71 @@ class DebugHour(unittest.TestCase):
     def test_bad_hour(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             fetch.main(["--debug-hour", "30.09 14ч"], fetcher=sparse_net, sleep=lambda s: None)
+
+
+class Recurring(unittest.TestCase):
+    """Повтарящи се прояви: разгръщане в прозореца на прогнозата и граници на сезона."""
+
+    FRI = {"weekday": "fri", "start": "20:30", "title": "Петък", "title_en": "Friday",
+           "season": {"from": "06-01", "to": "09-30"}}
+
+    def dates(self, cfg, first, days=7):
+        return [(e["date"], e["title"]) for e in fetch.expand_events(cfg, first, days)]
+
+    def test_weekly_inside_window(self):
+        # 25.09.2026 е петък; прозорец 7 дни → 25.09 и 02.10, но 02.10 е извън сезона
+        got = self.dates({"recurring": [self.FRI]}, date(2026, 9, 25))
+        self.assertEqual(got, [("2026-09-25", "Петък")])
+
+    def test_season_edges_are_inclusive(self):
+        last_day = dict(self.FRI, season={"from": "06-01", "to": "09-25"})
+        self.assertEqual(self.dates({"recurring": [last_day]}, date(2026, 9, 25), 0), [("2026-09-25", "Петък")])
+        day_after = dict(self.FRI, season={"from": "06-01", "to": "09-24"})
+        self.assertEqual(self.dates({"recurring": [day_after]}, date(2026, 9, 25), 0), [])
+        first_day = dict(self.FRI, season={"from": "06-05", "to": "09-30"})
+        self.assertEqual(self.dates({"recurring": [first_day]}, date(2026, 6, 5), 0), [("2026-06-05", "Петък")])
+
+    def test_season_across_new_year(self):
+        winter = {"from": "11-01", "to": "02-28"}
+        self.assertTrue(fetch.in_season(date(2027, 1, 15), winter))
+        self.assertTrue(fetch.in_season(date(2026, 11, 1), winter))
+        self.assertFalse(fetch.in_season(date(2026, 6, 1), winter))
+        self.assertTrue(fetch.in_season(date(2026, 6, 1), None))
+
+    def test_no_season_and_weekday_list(self):
+        rule = {"weekday": ["fri", "sat"], "start": "20:30", "title": "Уикенд"}
+        got = self.dates({"recurring": [rule]}, date(2026, 9, 25), 8)
+        self.assertEqual([d for d, _ in got], ["2026-09-25", "2026-09-26", "2026-10-02", "2026-10-03"])
+
+    def test_one_off_on_same_slot_wins(self):
+        cfg = {"events": [{"date": "2026-09-25", "start": "20:30", "title": "Специална"}],
+               "recurring": [self.FRI]}
+        self.assertEqual(self.dates(cfg, date(2026, 9, 25), 0), [("2026-09-25", "Специална")])
+
+    def test_unknown_weekday(self):
+        with self.assertRaises(ValueError):
+            fetch.expand_events({"recurring": [dict(self.FRI, weekday="петък")]}, date(2026, 9, 25), 7)
+
+    def test_in_forecast(self):
+        # NOW е събота 20.06; съботна проява в 20:30 попада в бурята от записаните отговори
+        cfg = dict(CONFIG, events=[], venue_en="Test venue",
+                   recurring=[{"weekday": "sat", "start": "20:30", "title": "Събота", "title_en": "Saturday"}])
+        fc = fetch.build_forecast(cfg, fetcher=FakeNet(), sleep=lambda s: None, now=NOW, log=lambda m: None)
+        self.assertEqual(fc["venue"], "Летен театър")
+        self.assertEqual(fc["venue_en"], "Test venue")
+        first, nxt = fc["events"]
+        self.assertEqual((first["start"], first["title_en"], first["risk"], first["scene"]),
+                         ("2026-06-20T20:30+03:00", "Saturday", "high", "storm"))
+        # следващата събота е в прозореца от 7 дни, но извън записаните данни
+        self.assertEqual((nxt["start"][:10], nxt["risk"]), ("2026-06-27", None))
+
+    def test_example_config_always_has_upcoming_event(self):
+        with open(os.path.join(fetch.APP_DIR, "config", "city.example.json"), encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        for k in range(14):  # всеки ден от две седмици
+            first = date(2026, 10, 1) + timedelta(days=k)
+            upcoming = [e for e in fetch.expand_events(cfg, first, fetch.FORECAST_DAYS) if e["date"] >= first.isoformat()]
+            self.assertTrue(upcoming, first)
 
 
 class OneSourceDown(SchemaMixin, unittest.TestCase):

@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import {
   median, riskOf, sceneOf, checkForecast, sunElevation, isDaylight, fromOpenMeteo,
   pickFocus, nextHours, summaryText, dayAgreement, confidenceOf, openMeteoUrl, DEFAULT_THRESHOLDS,
+  localTitle, placeLabel,
 } from '../zhivo-nebe.js';
 
 // forecast.json, записан от agent/fetch.py върху записаните отговори на агента
@@ -100,7 +101,7 @@ test('обобщение: само дни с увереност поне medium;
   assert.match(bg, /„Вечерна проява“ на 20\.06 от 20:30 — риск висок, буря/);
   assert.match(bg, /20\.06 \(висок\)/);
   assert.doesNotMatch(bg, /21\.06/);
-  assert.match(summaryText(fc, f, 'en'), /Next event: “Вечерна проява” on 20\.06 at 20:30 — high risk, storm/);
+  assert.match(summaryText(fc, f, 'en'), /Next event: “Evening event” on 20\.06 at 20:30 — high risk, storm/);
   const calm = { ...fc, days: [fc.days[1]] };
   assert.match(summaryText(calm, { event: null }, 'bg'), /Без потвърдени рискови дни/);
 });
@@ -158,4 +159,27 @@ test('адресът за резервния режим е без ключ, с �
   assert.equal(u.hostname, 'api.open-meteo.com');
   assert.equal(u.searchParams.get('models'), 'icon_seamless,gfs_seamless,ecmwf_ifs025');
   assert.ok(!/key/i.test(u.search));
+});
+
+test('място и заглавия на езика на страницата, с падане към българското', () => {
+  const fc = { city: 'Варна', venue: 'Летен театър', venue_en: 'Summer Theatre' };
+  assert.equal(placeLabel(fc, 'bg'), 'Летен театър');
+  assert.equal(placeLabel(fc, 'en'), 'Summer Theatre');
+  assert.equal(placeLabel({ city: 'Варна', venue: 'Летен театър' }, 'en'), 'Летен театър');
+  assert.equal(placeLabel({ city: 'Варна' }, 'en'), 'Варна');
+  assert.equal(localTitle({ title: 'Вечер', title_en: 'Evening' }, 'en'), 'Evening');
+  assert.equal(localTitle({ title: 'Вечер', title_en: 'Evening' }, 'bg'), 'Вечер');
+  assert.equal(localTitle({ title: 'Вечер' }, 'en'), 'Вечер');
+  const ev = { title: 'Вечер', title_en: 'Evening', start: '2026-06-20T20:30+03:00', risk: 'high', scene: 'storm' };
+  assert.match(summaryText({ days: [] }, { event: ev }, 'en'), /“Evening”/);
+});
+
+test('резервният режим пази английските заглавия и мястото', () => {
+  const fb = fromOpenMeteo(omMulti(), {
+    now: Date.parse('2026-06-20T06:00+03:00'), venue: 'Летен театър', venue_en: 'Summer Theatre',
+    events: [{ title: 'Вечер', title_en: 'Evening', start: '2026-06-20T20:30+03:00' }],
+  });
+  assert.equal(fb.venue_en, 'Summer Theatre');
+  assert.equal(fb.events[0].title_en, 'Evening');
+  assert.equal(placeLabel(fb, 'en'), 'Summer Theatre');
 });

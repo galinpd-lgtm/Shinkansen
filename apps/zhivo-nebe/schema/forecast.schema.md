@@ -7,10 +7,11 @@
 | `schema_version` | "2" |
 | `generated_at` | ISO време на изчисляването |
 | `city`, `lat`, `lon` | от конфигурацията |
+| `venue`, `venue_en` | по избор: мястото на български и английски (сайтът пада към `venue`, ако `venue_en` липсва) |
 | `sources_ok` / `sources_failed` | кои източници са отговорили — ако падне един, сайтът продължава |
 | `hours[]` | час по час: `t`, `temp_c`, `precip_pct`, `wind_kmh` (среден вятър), `gust_kmh` (пориви), `cloud_pct`, `thunder`, `spread_temp`, `spread_precip`, `spread_wind` (разминаване между източниците по величина) |
 | `days[]` | ден: `date`, `risk` (low/medium/high), `agreement` (колко източника са съгласни), `confidence` (low/medium/high — доколко да се вярва на риска) |
-| `events[]` | проява: `title`, `start`, `risk`, `scene` (clear/clouds/rain/storm/heat/snow) |
+| `events[]` | проява: `title`, по избор `title_en`, `start`, `risk`, `scene` (clear/clouds/rain/storm/heat/snow) |
 | `summary` | едно-три изречения, сглобени по правила (без езиков модел) |
 
 **Уточнения:**
@@ -26,8 +27,12 @@
 - `confidence` зависи от `agreement`: един или нито един → `low`; поне три и поне 60 % от гласуващите → `high`; иначе `medium`.
   Риск от един източник не се ескалира и не се сваля — `risk` остава по стойността си, само `confidence` е `low`.
   `summary` споменава само рискови дни с `confidence` поне `medium`; препоръчително е сайтът да прави същото.
-- `events[]` съдържа само предстоящи прояви; извън хоризонта на прогнозата `risk` и `scene` са `null`.
+- `events[]` съдържа само предстоящи прояви — еднократните и повторенията (`recurring`), разгърнати за дните
+  на прогнозата; извън хоризонта на прогнозата `risk` и `scene` са `null`.
 - Ако всички източници паднат: `sources_ok` е празен, `hours` и `days` са празни.
+
+**Добавки във версия 2, без да чупят договора** (полетата са по избор; четецът, който не ги знае, ги пропуска):
+`venue`, `venue_en`, `events[].title_en`.
 
 **Промени спрямо версия 1:**
 - `hours[].spread` (0–1) е заменено от `spread_temp`, `spread_precip`, `spread_wind` в мерните единици на величината.

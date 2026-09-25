@@ -44,6 +44,9 @@
     ol, ul { padding-left: 1.3em; }
     li { margin: 4px 0; }
     code { font-size: .9em; background: var(--page-border); padding: 1px 5px; border-radius: 5px; }
+    /* благодарността: видима, но тиха — само текст, без лого и чужди цветове */
+    .thanks { color: var(--page-muted); font-size: .95rem; border-left: 3px solid var(--page-border); padding-left: 14px; }
+    .thanks h2 { font-size: 1rem; color: var(--page-fg); }
     footer { color: var(--page-muted); font-size: .85rem; padding: 24px 0 40px; border-top: 1px solid var(--page-border); }
     /* двуезичност: показваме само езика на <html lang> */
     html[lang="bg"] [lang="en"]:not(html), html[lang="en"] [lang="bg"]:not(html) { display: none !important; }
@@ -64,7 +67,9 @@
     <p class="lead" lang="en">A forecast for outdoor events, cross-checked across five free, independent sources.
       The background is the scene for the next event. Below it: the next 24 hours, risky days and a traffic light for every event.</p>
 
-    <zhivo-nebe src="forecast.json" lat="43.2141" lon="27.9147" city="Варна"></zhivo-nebe>
+    <zhivo-nebe src="forecast.json" lat="43.2141" lon="27.9147" city="Варна"
+      venue="Летен театър — Дворец на културата и спорта, Варна"
+      venue-en="Summer Theatre — Palace of Culture and Sports, Varna"></zhivo-nebe>
 
     <main>
       <section>
@@ -74,15 +79,15 @@
           <p>Малък агент (<code>agent/fetch.py</code>) всеки час тегли прогнозата от пет източника, смята медианата,
             разминаването и риска и записва един файл — <code>forecast.json</code>. Тази страница само го чете и рисува.
             Няма сървър, няма ключове, няма бисквитки и няма външни библиотеки.</p>
-          <p>Демонстрацията ползва примерната конфигурация за Варна. Ако в нея няма предстоящи прояви,
-            небето показва времето сега.</p>
+          <p>Демонстрацията ползва примерната конфигурация за Варна. Проявите в нея се повтарят всеки петък и събота
+            в 20:30, затова винаги има следваща. Ако проявата е още извън прогнозата, небето показва времето сега.</p>
         </div>
         <div lang="en">
           <p>A small agent (<code>agent/fetch.py</code>) pulls the forecast from five sources every hour, computes the median,
             the disagreement and the risk, and writes a single file — <code>forecast.json</code>. This page only reads and draws it.
             No server, no keys, no cookies, no external libraries.</p>
-          <p>The demo uses the example configuration for Varna. If it lists no upcoming events,
-            the sky shows the weather right now.</p>
+          <p>The demo uses the example configuration for Varna. Its events repeat every Friday and Saturday
+            at 20:30, so there is always a next one. If that event is still beyond the forecast, the sky shows the weather right now.</p>
         </div>
       </section>
 
@@ -170,6 +175,15 @@
         </ol>
         <p><a href="https://github.com/galinpd-lgtm/Shinkansen/tree/main/apps/zhivo-nebe#readme">
           <span lang="bg">Пълното ръководство (README)</span><span lang="en">Full guide (README, in Bulgarian)</span></a></p>
+      </section>
+      <section class="thanks">
+        <h2 lang="bg">Вдъхновение и благодарност</h2>
+        <h2 lang="en">Inspiration and thanks</h2>
+        <p lang="bg">Вдъхновено от Летния театър на Дворец на културата и спорта — Варна. Първата версия на Живо небе
+          беше направена за вечерите под открито небе на неговата сцена — там, където времето решава дали представлението ще се състои.</p>
+        <p lang="en">Inspired by the Summer Theatre of the Palace of Culture and Sports — Varna. The first version of Living Sky
+          was built for the open-air evenings on its stage — where the weather decides whether the show goes on.</p>
+        <p><a href="https://palaceofvarna.com" rel="noopener">palaceofvarna.com</a></p>
       </section>
     </main>
 

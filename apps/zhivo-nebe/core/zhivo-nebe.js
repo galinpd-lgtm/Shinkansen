@@ -146,7 +146,7 @@ function isoWithOffset(localNoZone, offsetSec) {
 /** Отговор на Open-Meteo с три модела → обект във формата на forecast.json v2 (+ mode: 'fallback').
  *  Всяка величина — само от моделите, които я дават; риск, съгласие и увереност — като агента. */
 export function fromOpenMeteo(data, { thresholds = DEFAULT_THRESHOLDS, events = [], city = '', now = Date.now(),
-  before_h = 1, after_h = 3 } = {}) {
+  before_h = 1, after_h = 3, venue = '', venue_en = '' } = {}) {
   const h = data.hourly;
   const off = data.utc_offset_seconds || 0;
   const col = (name, m) => h[`${name}_${m}`] || (OM_MODELS.length === 1 ? h[name] : null) || [];
@@ -197,11 +197,12 @@ export function fromOpenMeteo(data, { thresholds = DEFAULT_THRESHOLDS, events = 
     const t0 = Date.parse(ev.start);
     const from = Math.floor((t0 - before_h * HOUR_MS) / HOUR_MS) * HOUR_MS, to = t0 + after_h * HOUR_MS;
     const recs = hours.filter((hr) => { const x = Date.parse(hr.t); return x >= from && x < to; });
-    return { title: ev.title, start: ev.start, risk: recs.length ? RISK_LEVELS[riskOf(recs, thresholds)] : null,
+    return { title: ev.title, ...(ev.title_en ? { title_en: ev.title_en } : {}), start: ev.start, risk: recs.length ? RISK_LEVELS[riskOf(recs, thresholds)] : null,
       scene: recs.length ? sceneOf(recs, thresholds) : null, _end: to };
   }).filter((e) => e._end > now).map(({ _end, ...e }) => e);
   return {
     schema_version: SCHEMA_VERSION, generated_at: new Date(now).toISOString(), city,
+    ...(venue ? { venue } : {}), ...(venue_en ? { venue_en } : {}),
     lat: data.latitude, lon: data.longitude,
     sources_ok: models.map((m) => `open-meteo:${m}`), sources_failed: [],
     hours, days, events: evs, summary: '', mode: 'fallback',
@@ -209,6 +210,16 @@ export function fromOpenMeteo(data, { thresholds = DEFAULT_THRESHOLDS, events = 
 }
 
 // ------------------------------------------------------------------ какво да покажем
+
+/** Заглавие на проява на езика на страницата; без английско — българското. */
+export function localTitle(ev, lang) {
+  return (lang === 'en' && ev.title_en) || ev.title || '';
+}
+
+/** Мястото на езика на страницата: venue_en → venue → city. */
+export function placeLabel(fc, lang) {
+  return (lang === 'en' && fc.venue_en) || fc.venue || fc.city || '';
+}
 
 export function nextHours(fc, now, n = 24) {
   const from = Math.floor(now / HOUR_MS) * HOUR_MS;
@@ -298,8 +309,9 @@ export function summaryText(fc, focus, lang = 'bg') {
   const ev = focus.event;
   if (ev) {
     const when = `${ddmm(ev.start)} ${tx.at} ${hhmm(ev.start)}`;
-    parts.push(ev.risk ? tx.nextEvent(ev.title, when, tx.risk[ev.risk], tx.scene[ev.scene])
-      : tx.nextEventBeyond(ev.title, when));
+    const title = localTitle(ev, lang);
+    parts.push(ev.risk ? tx.nextEvent(title, when, tx.risk[ev.risk], tx.scene[ev.scene])
+      : tx.nextEventBeyond(title, when));
   }
   const days = fc.days || [];
   const risky = days.filter((d) => d.risk !== 'low' && d.confidence !== 'low');
@@ -641,6 +653,8 @@ function defineElement() {
         this.fc = fromOpenMeteo(data, {
           thresholds: this.thresholds(), events: file?.events || [], now,
           city: this.getAttribute('city') || file?.city || '',
+          venue: this.getAttribute('venue') || file?.venue || '',
+          venue_en: this.getAttribute('venue-en') || file?.venue_en || '',
           before_h: this.num('before-h', 1), after_h: this.num('after-h', 3),
         });
       } catch {
@@ -662,7 +676,9 @@ function defineElement() {
         notice.textContent = tx.error;
         this.dataset.scene = 'clouds'; this.dataset.daylight = 'day';
         this.sky.set('clouds', true);
-        this.$('.sky-text').innerHTML = `<div><h2>${esc(this.getAttribute('city') || '')}</h2></div>`;
+        const place = placeLabel({ city: this.getAttribute('city'), venue: this.getAttribute('venue'),
+          venue_en: this.getAttribute('venue-en') }, this.lang_);
+        this.$('.sky-text').innerHTML = `<div><h2>${esc(place)}</h2></div>`;
         this.$('.summary').textContent = ''; this.$('.panels').innerHTML = ''; this.$('.foot').textContent = '';
         return;
       }
@@ -674,11 +690,11 @@ function defineElement() {
 
       const ev = focus.kind === 'event' ? focus.event : null;
       const risk = ev ? ev.risk : null;
-      const title = ev ? esc(ev.title) : tx.now;
+      const title = ev ? esc(localTitle(ev, this.lang_)) : tx.now;
       const sub = ev ? `${ddmm(ev.start)} ${tx.at} ${hhmm(ev.start)} · ${tx.scene[ev.scene]}`
         : `${tx.scene[focus.scene]}`;
       this.$('.sky-text').innerHTML = `
-        <div><p>${esc(fc.city)}</p><h2>${title}</h2><p>${esc(sub)}</p></div>
+        <div><p>${esc(placeLabel(fc, this.lang_))}</p><h2>${title}</h2><p>${esc(sub)}</p></div>
         ${ev ? this.light(risk, tx) : ''}`;
       this.$('.summary').textContent = summaryText(fc, focus, this.lang_);
 
@@ -706,7 +722,7 @@ function defineElement() {
 
       const evs = (fc.events || []).filter((e) => Date.parse(e.start) + this.num('after-h', 3) * HOUR_MS > now);
       const evHtml = evs.length ? `<ul>${evs.map((e) => `<li>${this.light(e.risk, tx, true)}
-          <span class="date">${ddmm(e.start)} ${hhmm(e.start)}</span><b>${esc(e.title)}</b>
+          <span class="date">${ddmm(e.start)} ${hhmm(e.start)}</span><b>${esc(localTitle(e, this.lang_))}</b>
           <span class="muted">${e.risk ? `${tx.risk_} ${tx.risk[e.risk]} · ${tx.scene[e.scene]}` : tx.beyond}</span></li>`).join('')}</ul>`
         : `<p class="muted">${tx.noEvents}</p>`;
 
