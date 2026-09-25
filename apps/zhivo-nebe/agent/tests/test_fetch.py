@@ -30,7 +30,7 @@ CONFIG = {
     "event_window": {"before_h": 1, "after_h": 3},
     "thresholds": {
         "high": {"precip_pct": 70, "gust_kmh": 50, "temp_c": 35, "thunder": True},
-        "medium": {"precip_pct": 40, "gust_kmh": 35, "temp_c": 33},
+        "medium": {"precip_pct": 40, "wind_kmh": 35, "temp_c": 33},
     },
     "sources": fetch.DEFAULT_SOURCES,
     "events": [
@@ -107,15 +107,17 @@ class SchemaMixin:
     def assert_schema(self, fc):
         self.assertEqual(set(fc), {"schema_version", "generated_at", "city", "lat", "lon",
                                    "sources_ok", "sources_failed", "hours", "days", "events", "summary"})
-        self.assertEqual(fc["schema_version"], "1")
+        self.assertEqual(fc["schema_version"], "2")
         self.assertEqual(fc["city"], "Варна")
         datetime.fromisoformat(fc["generated_at"])
         for h in fc["hours"]:
-            self.assertEqual(set(h), {"t", "temp_c", "precip_pct", "gust_kmh", "cloud_pct", "thunder", "spread"})
+            self.assertEqual(set(h), {"t", "temp_c", "precip_pct", "wind_kmh", "gust_kmh", "cloud_pct",
+                                      "thunder", "spread_temp", "spread_precip", "spread_wind"})
             self.assertIsInstance(h["thunder"], bool)
         for d in fc["days"]:
-            self.assertEqual(set(d), {"date", "risk", "agreement"})
+            self.assertEqual(set(d), {"date", "risk", "agreement", "confidence"})
             self.assertIn(d["risk"], ("low", "medium", "high"))
+            self.assertIn(d["confidence"], ("low", "medium", "high"))
         for e in fc["events"]:
             self.assertEqual(set(e), {"title", "start", "risk", "scene"})
             self.assertIn(e["risk"], ("low", "medium", "high", None))
@@ -146,10 +148,12 @@ class NormalCase(SchemaMixin, unittest.TestCase):
         self.assertTrue(storm["thunder"])
         self.assertGreaterEqual(storm["precip_pct"], 70)
         self.assertGreaterEqual(storm["gust_kmh"], 50)
-        self.assertIsNotNone(storm["spread"])
-        self.assertTrue(0 <= storm["spread"] <= 1)
+        self.assertGreater(storm["spread_temp"], 0)
+        self.assertEqual(storm["spread_precip"], 0)   # icon и gfs са съгласни, ECMWF е null
+        self.assertIsNotNone(storm["spread_wind"])
         # в края остава само 7Timer — разминаването е неизвестно
-        self.assertIsNone(self.fc["hours"][-1]["spread"])
+        last = self.fc["hours"][-1]
+        self.assertEqual((last["spread_temp"], last["spread_precip"], last["spread_wind"]), (None, None, None))
 
     def test_days(self):
         d = {x["date"]: x for x in self.fc["days"]}
@@ -157,6 +161,8 @@ class NormalCase(SchemaMixin, unittest.TestCase):
         self.assertEqual(d["2026-06-20"]["agreement"], 5)
         self.assertEqual(d["2026-06-21"]["risk"], "medium")
         self.assertEqual(d["2026-06-21"]["agreement"], 4)  # 7Timer не вижда жегата
+        self.assertEqual(d["2026-06-20"]["confidence"], "high")
+        self.assertEqual(d["2026-06-21"]["confidence"], "high")
 
     def test_events(self):
         ev = {e["title"]: e for e in self.fc["events"]}
@@ -214,14 +220,18 @@ class PerQuantitySources(unittest.TestCase):
 
     TH = CONFIG["thresholds"]
 
-    def test_spread_ignores_missing(self):
-        recs = [fetch.rec(20, 80, 50, 90), fetch.rec(21, 80, 50, 90),
-                fetch.rec(25, None, None, 90), fetch.rec(29, None, None, 90)]
+    def test_spread_per_quantity(self):
+        recs = [fetch.rec(20, 80, 50, 90, wind_kmh=30), fetch.rec(21, 60, 50, 90, wind_kmh=30),
+                fetch.rec(25, None, None, 90, wind_kmh=18), fetch.rec(29, None, None, 90, wind_kmh=None)]
         r = fetch.combine_hour(recs)
-        self.assertEqual(r["precip_pct"], 80)
-        self.assertEqual(r["spread"], 0.9)  # от температурата; валежът и поривите са съгласни
-        only_temp = fetch.combine_hour([fetch.rec(20, 80), fetch.rec(20, None)])
-        self.assertEqual(only_temp["spread"], 0.0)
+        self.assertEqual(r["precip_pct"], 70)
+        self.assertEqual(r["spread_temp"], 9.0)      # от четирите източника
+        self.assertEqual(r["spread_precip"], 20)     # само от двата, които дават вероятност
+        self.assertEqual(r["spread_wind"], 12.0)     # от трите, които дават среден вятър
+        one = fetch.combine_hour([fetch.rec(20, 80), fetch.rec(20, None)])
+        self.assertEqual(one["spread_temp"], 0.0)
+        self.assertIsNone(one["spread_precip"])      # един източник — неизвестно, не 0
+        self.assertIsNone(one["spread_wind"])
 
     def test_agreement_only_among_sources_with_quantity(self):
         # денят е „висок“ само заради вероятност за валеж → гласуват само двата модела на Open-Meteo
@@ -233,12 +243,12 @@ class PerQuantitySources(unittest.TestCase):
         merged[0]["precip_pct"] = 80
         level = fetch.risk_of(merged, self.TH)
         self.assertEqual(level, 2)
-        self.assertEqual(fetch.day_agreement(level, merged, [om1, om2, met, timer], self.TH), (1, 2))
+        self.assertEqual(fetch.day_agreement(level, merged, [om1, om2, met, timer], self.TH), (1, 1, 2))
 
     def test_low_day_everyone_votes(self):
         per = [[fetch.rec(20, 5, 20, 30)], [fetch.rec(21, None, None, 30)]]
         merged = [fetch.combine_hour([p[0] for p in per])]
-        self.assertEqual(fetch.day_agreement(0, merged, per, self.TH), (2, 2))
+        self.assertEqual(fetch.day_agreement(0, merged, per, self.TH), (2, 2, 2))
 
     def test_normal_case_quantities(self):
         net = FakeNet()
@@ -250,6 +260,94 @@ class PerQuantitySources(unittest.TestCase):
         self.assertEqual(storm["gust_kmh"], 58)
         self.assertIn("5/5", fc["summary"])  # гръмотевицата я дават всички
         self.assertIn("4/5", fc["summary"])  # жегата: 7Timer не е съгласен
+
+
+def load_example_thresholds():
+    with open(os.path.join(fetch.APP_DIR, "config", "city.example.json"), encoding="utf-8") as fh:
+        return json.load(fh)["thresholds"]
+
+
+class WindVsGust(unittest.TestCase):
+    """Точка 1: средният риск е по среден вятър, високият — по пориви."""
+
+    TH = load_example_thresholds()
+
+    def test_example_config_splits_wind_and_gust(self):
+        self.assertEqual(self.TH["medium"].get("wind_kmh"), 35)
+        self.assertNotIn("gust_kmh", self.TH["medium"])
+        self.assertEqual(self.TH["high"].get("gust_kmh"), 50)
+
+    def test_gusts_alone_do_not_make_medium(self):
+        # обикновен ветровит ден: пориви 45, среден вятър 20 → нисък риск (преди излизаше среден)
+        self.assertEqual(fetch.risk_of([fetch.rec(22, 10, 45, 40, wind_kmh=20)], self.TH), 0)
+
+    def test_mean_wind_medium_and_gust_high(self):
+        self.assertEqual(fetch.risk_of([fetch.rec(22, 10, 45, 40, wind_kmh=36)], self.TH), 1)
+        self.assertEqual(fetch.risk_of([fetch.rec(22, 10, 52, 40, wind_kmh=20)], self.TH), 2)
+
+    def test_wind_from_all_sources(self):
+        om = fetch.parse_open_meteo(json.loads(read_fixture("open_meteo_icon_seamless.json")), "icon_seamless")
+        met = fetch.parse_met_norway(json.loads(read_fixture("met_norway.json")))
+        timer = fetch.parse_7timer(json.loads(read_fixture("7timer_civil.json")))
+        t = datetime(2026, 6, 20, 6, tzinfo=timezone.utc)
+        self.assertEqual(om[t]["wind_kmh"], 12.4)
+        self.assertAlmostEqual(met[t]["wind_kmh"], 3.1 * 3.6)  # m/s → km/h
+        self.assertEqual(timer[t]["wind_kmh"], 20.5)           # клас 3 по скалата на 7Timer
+        self.assertIsNone(met[t]["gust_kmh"])
+
+    def test_normal_case_calm_day_is_low(self):
+        net = FakeNet()
+        fc = build(net)
+        self.assertEqual({d["date"]: d["risk"] for d in fc["days"]}["2026-06-22"], "low")
+        self.assertTrue(all(h["wind_kmh"] is not None for h in fc["hours"]))
+
+
+def open_meteo_day(precip):
+    """Малък отговор на Open-Meteo: 24 спокойни часа, една и съща вероятност за валеж."""
+    times = [f"2026-06-20T{h:02d}:00" for h in range(24)]
+    return json.dumps({"hourly": {
+        "time": times, "temperature_2m": [22.0] * 24, "precipitation_probability": [precip] * 24,
+        "wind_speed_10m": [10.0] * 24, "wind_gusts_10m": [20.0] * 24,
+        "cloud_cover": [40] * 24, "weather_code": [2] * 24}}).encode()
+
+
+class Confidence(unittest.TestCase):
+    """Точка 3: риск само от един източник не се ескалира и не влиза в summary."""
+
+    def test_levels(self):
+        self.assertEqual(fetch.confidence_of(1, 1), "low")
+        self.assertEqual(fetch.confidence_of(1, 5), "low")
+        self.assertEqual(fetch.confidence_of(2, 2), "medium")
+        self.assertEqual(fetch.confidence_of(3, 5), "high")
+        self.assertEqual(fetch.confidence_of(3, 6), "medium")
+
+    def test_single_source_risk_is_low_confidence(self):
+        # icon казва 80 %, gfs — 0 %: медианата е 40 → среден риск, но само от icon
+        answers = {"icon_seamless": open_meteo_day(80), "gfs_seamless": open_meteo_day(0)}
+
+        def net(url):
+            return answers[next(m for m in answers if f"models={m}" in url)]
+
+        cfg = dict(CONFIG, sources=["open-meteo:icon_seamless", "open-meteo:gfs_seamless"], events=[])
+        fc = fetch.build_forecast(cfg, fetcher=net, sleep=lambda s: None, now=NOW, log=lambda m: None)
+        day = {d["date"]: d for d in fc["days"]}["2026-06-20"]
+        self.assertEqual(day["risk"], "medium")        # стойността не се пипа
+        self.assertEqual(day["confidence"], "low")
+        self.assertEqual(day["agreement"], 0)          # icon сам казва „висок“, gfs — „нисък“
+        self.assertNotIn("20.06", fc["summary"])
+        self.assertIn("без потвърдени рискови дни", fc["summary"])
+
+    def test_two_sources_agree_is_mentioned(self):
+        answers = {"icon_seamless": open_meteo_day(80), "gfs_seamless": open_meteo_day(75)}
+
+        def net(url):
+            return answers[next(m for m in answers if f"models={m}" in url)]
+
+        cfg = dict(CONFIG, sources=["open-meteo:icon_seamless", "open-meteo:gfs_seamless"], events=[])
+        fc = fetch.build_forecast(cfg, fetcher=net, sleep=lambda s: None, now=NOW, log=lambda m: None)
+        day = {d["date"]: d for d in fc["days"]}["2026-06-20"]
+        self.assertEqual((day["risk"], day["confidence"]), ("high", "medium"))
+        self.assertIn("20.06 (висок, 2/2 източника)", fc["summary"])
 
 
 class OneSourceDown(SchemaMixin, unittest.TestCase):

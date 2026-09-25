@@ -29,16 +29,16 @@ REPO_URL = "https://github.com/galinpd-lgtm/Shinkansen"
 # MET Norway изисква User-Agent, който идентифицира приложението и дава връзка за контакт
 USER_AGENT = f"Shinkansen-zhivo-nebe/1.0 (+{REPO_URL})"
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 FORECAST_DAYS = 7            # колко дни напред пазим в hours[]/days[]
 HTTP_TIMEOUT = 20            # секунди за една заявка
 ATTEMPTS = 3                 # опити на източник
 BACKOFF_S = 2.0              # изчакване 2 s, после 4 s
 UTC = timezone.utc
 
-FIELDS = ("temp_c", "precip_pct", "gust_kmh", "cloud_pct")
-# Мащаб за разминаването: колко разлика се брои за „пълно несъгласие“ (spread = 1)
-SPREAD_SCALE = {"temp_c": 10.0, "precip_pct": 100.0, "gust_kmh": 40.0}
+FIELDS = ("temp_c", "precip_pct", "wind_kmh", "gust_kmh", "cloud_pct")
+# разминаване по величина (max − min в мерната ѝ единица): изходно поле → величина
+SPREAD_FIELDS = {"spread_temp": "temp_c", "spread_precip": "precip_pct", "spread_wind": "wind_kmh"}
 RISK_LEVELS = ("low", "medium", "high")
 
 DEFAULT_SOURCES = ["open-meteo:icon_seamless", "open-meteo:gfs_seamless",
@@ -84,9 +84,10 @@ def fetch_json(url, fetcher, sleep):
 
 # ---------------------------------------------------------------- общи помощници
 
-def rec(temp_c=None, precip_pct=None, gust_kmh=None, cloud_pct=None, thunder=False, snow=False):
-    """Един час от един източник в общия формат."""
-    return {"temp_c": temp_c, "precip_pct": precip_pct, "gust_kmh": gust_kmh,
+def rec(temp_c=None, precip_pct=None, gust_kmh=None, cloud_pct=None, thunder=False, snow=False,
+        wind_kmh=None):
+    """Един час от един източник в общия формат. wind_kmh е среден вятър, gust_kmh — порив."""
+    return {"temp_c": temp_c, "precip_pct": precip_pct, "wind_kmh": wind_kmh, "gust_kmh": gust_kmh,
             "cloud_pct": cloud_pct, "thunder": bool(thunder), "snow": bool(snow)}
 
 
@@ -116,7 +117,7 @@ def fetch_open_meteo(cfg, model, fetcher, sleep):
     """Open-Meteo, един модел на заявка — всеки модел е отделен източник и пада отделно."""
     q = urllib.parse.urlencode({
         "latitude": cfg["lat"], "longitude": cfg["lon"],
-        "hourly": "temperature_2m,precipitation_probability,"
+        "hourly": "temperature_2m,precipitation_probability,wind_speed_10m,"
                   "wind_gusts_10m,cloud_cover,weather_code",
         "models": model, "timezone": "GMT", "forecast_days": FORECAST_DAYS + 1,
     })
@@ -133,14 +134,15 @@ def parse_open_meteo(data, model):
         return h.get(name) or h.get(f"{name}_{model}") or [None] * len(times)
 
     temp, prob = col("temperature_2m"), col("precipitation_probability")
-    gust, cloud, code = col("wind_gusts_10m"), col("cloud_cover"), col("weather_code")
+    wind, gust = col("wind_speed_10m"), col("wind_gusts_10m")
+    cloud, code = col("cloud_cover"), col("weather_code")
     out = {}
     for i, t in enumerate(times):
         dt = datetime.fromisoformat(t).replace(tzinfo=UTC)
         c = code[i]
         # ECMWF често няма вероятност за валеж — остава null, не я измисляме
         out[dt] = rec(num(temp[i]), num(prob[i]), num(gust[i]), num(cloud[i]),
-                      thunder=c in THUNDER_WMO, snow=c in SNOW_WMO)
+                      thunder=c in THUNDER_WMO, snow=c in SNOW_WMO, wind_kmh=num(wind[i]))
     return out
 
 
@@ -171,22 +173,27 @@ def parse_met_norway(data):
         p = det.get("probability_of_precipitation")
         # само истински порив; средният вятър (wind_speed) не се подменя като порив
         g = inst.get("wind_speed_of_gust")
+        w = inst.get("wind_speed")
         steps.append((dt, step, rec(
             num(inst.get("air_temperature")), num(p),
             None if g is None else g * 3.6,  # m/s → km/h
             num(inst.get("cloud_area_fraction")),
-            thunder="thunder" in sym, snow=("snow" in sym or "sleet" in sym))))
+            thunder="thunder" in sym, snow=("snow" in sym or "sleet" in sym),
+            wind_kmh=None if w is None else w * 3.6)))  # m/s → km/h
     return expand(steps)
 
 
 # 7Timer дава класове, не стойности: cloudcover 1–9 → представителен процент
 CLOUD_7T = {1: 3, 2: 12, 3: 25, 4: 37, 5: 50, 6: 62, 7: 75, 8: 87, 9: 97}
+# wind10m.speed 1–8 → среда на класа в km/h (класове в m/s: <0,3 · 0,3–3,4 · 3,4–8 · 8–10,8 ·
+# 10,8–17,2 · 17,2–24,5 · 24,5–32,6 · >32,6); за последния клас — долната граница
+WIND_7T_KMH = {1: 0.5, 2: 6.7, 3: 20.5, 4: 33.8, 5: 50.4, 6: 75.1, 7: 102.8, 8: 117.4}
 
 
 def fetch_7timer(cfg, fetcher, sleep):
     """7Timer, продукт civil — 3-часови стъпки в UTC (init + timepoint).
-    Няма вероятност за валеж и пориви (prec_amount е код 0–9, wind10m.speed — клас 1–8),
-    затова дава само температура, облачност, гръмотевица и сняг."""
+    Няма вероятност за валеж и пориви (prec_amount е код 0–9); средният вятър е клас 1–8.
+    Дава температура, среден вятър, облачност, гръмотевица и сняг."""
     q = urllib.parse.urlencode({"lon": cfg["lon"], "lat": cfg["lat"], "ac": 0,
                                 "unit": "metric", "output": "json", "tzshift": 0})
     data = fetch_json(f"https://www.7timer.info/bin/civil.php?{q}", fetcher, sleep)
@@ -199,9 +206,11 @@ def parse_7timer(data):
     for s in data["dataseries"]:
         dt = init + timedelta(hours=int(s["timepoint"]))
         weather = s.get("weather", "")
+        wind = s.get("wind10m") or {}
         steps.append((dt, 3, rec(
             num(s.get("temp2m")), None, None, num(CLOUD_7T.get(s.get("cloudcover"))),
-            thunder="ts" in weather, snow=(s.get("prec_type") == "snow" or "snow" in weather))))
+            thunder="ts" in weather, snow=(s.get("prec_type") == "snow" or "snow" in weather),
+            wind_kmh=WIND_7T_KMH.get(wind.get("speed")))))
     return expand(steps)
 
 
@@ -238,24 +247,25 @@ def collect(cfg, fetcher, sleep, log):
 # ---------------------------------------------------------------- смятане
 
 def combine_hour(recs):
-    """Медиана по полетата, гласуване за гръмотевица/сняг, разминаване 0..1."""
+    """Медиана по полетата, гласуване за гръмотевица/сняг, разминаване по величина.
+    Всяка величина — само от източниците, които я дават."""
     out = {}
-    spreads = []
     for f in FIELDS:
         vals = [r[f] for r in recs if r[f] is not None]
         out[f] = statistics.median(vals) if vals else None
-        if f in SPREAD_SCALE and len(vals) >= 2:
-            spreads.append(min(1.0, (max(vals) - min(vals)) / SPREAD_SCALE[f]))
+    for key, f in SPREAD_FIELDS.items():
+        vals = [r[f] for r in recs if r[f] is not None]
+        # при по-малко от два източника разминаването е неизвестно, не нулево
+        out[key] = round(max(vals) - min(vals), 1) if len(vals) >= 2 else None
     # гръмотевица/сняг: поне една трета от източниците за този час (минимум един)
     need = max(1, math.ceil(len(recs) / 3))
     out["thunder"] = sum(r["thunder"] for r in recs) >= need
     out["snow"] = sum(r["snow"] for r in recs) >= need
-    # при един източник разминаването е неизвестно, не нулево
-    out["spread"] = round(max(spreads), 2) if spreads else None
     return out
 
 
-RISK_FIELDS = ("precip_pct", "gust_kmh", "temp_c", "thunder")
+# кои величини влизат в риска решават праговете: medium.wind_kmh (среден вятър), high.gust_kmh (порив)
+RISK_FIELDS = ("precip_pct", "wind_kmh", "gust_kmh", "temp_c", "thunder")
 
 
 def field_level(r, f, th):
@@ -286,19 +296,32 @@ def day_agreement(level, merged, per_source, th):
     """Колко източника стигат до същия риск като общата прогноза.
     Броим само източниците, които реално дават величината, определила риска:
     ако денят е „висок“ заради вероятност за валеж, MET и 7Timer не гласуват.
-    Връща (съгласни, допуснати до гласуване)."""
+    Връща (съгласни, подкрепящи, допуснати до гласуване). „Подкрепящ“ е източник,
+    който сам стига поне до това ниво — за ниския риск това са съгласните."""
     if level:
         drivers = tuple(f for f in RISK_FIELDS if risk_of(merged, th, (f,)) == level)
     else:
         drivers = RISK_FIELDS
-    agree = eligible = 0
+    agree = support = eligible = 0
     for recs in per_source:
         has = tuple(f for f in drivers if gives(recs, f))
         if not recs or not has:
             continue
         eligible += 1
-        agree += risk_of(recs, th, has) == level
-    return agree, eligible
+        own = risk_of(recs, th, has)
+        agree += own == level
+        support += own >= level if level else own == 0
+    return agree, support, eligible
+
+
+def confidence_of(support, eligible):
+    """Доколко да вярваме на дневния риск. Риск от един източник не се ескалира —
+    остава по стойността си, но е с ниска увереност и не влиза в summary."""
+    if support <= 1:
+        return "low"
+    if support >= 3 and support >= 0.6 * eligible:
+        return "high"
+    return "medium"
 
 
 def scene_of(recs, th):
@@ -343,10 +366,13 @@ def build_forecast(cfg, fetcher=http_get, sleep=time.sleep, now=None, log=None):
         "t": local_iso(dt, tz),
         "temp_c": None if r["temp_c"] is None else round(r["temp_c"], 1),
         "precip_pct": None if r["precip_pct"] is None else round(r["precip_pct"]),
+        "wind_kmh": None if r["wind_kmh"] is None else round(r["wind_kmh"]),
         "gust_kmh": None if r["gust_kmh"] is None else round(r["gust_kmh"]),
         "cloud_pct": None if r["cloud_pct"] is None else round(r["cloud_pct"]),
         "thunder": r["thunder"],
-        "spread": r["spread"],
+        "spread_temp": r["spread_temp"],
+        "spread_precip": r["spread_precip"],
+        "spread_wind": r["spread_wind"],
     } for dt, r in combined.items()]
 
     # дни по местно време; agreement = колко източника сами стигат до същия риск
@@ -358,8 +384,9 @@ def build_forecast(cfg, fetcher=http_get, sleep=time.sleep, now=None, log=None):
         merged = [combined[dt] for dt in dts]
         level = risk_of(merged, th)
         per_source = [[s[dt] for dt in dts if dt in s] for s in ok.values()]
-        agree, eligible = day_agreement(level, merged, per_source, th)
-        days.append({"date": d.isoformat(), "risk": RISK_LEVELS[level], "agreement": agree})
+        agree, support, eligible = day_agreement(level, merged, per_source, th)
+        days.append({"date": d.isoformat(), "risk": RISK_LEVELS[level], "agreement": agree,
+                     "confidence": confidence_of(support, eligible)})
         voters.append(eligible)
 
     win = cfg.get("event_window", {})
@@ -422,13 +449,17 @@ def summarize(cfg, days, voters, events, ok, failed):
         else:
             parts.append(f"Следваща проява: „{e['title']}“ на {when} — риск {RISK_BG[e['risk']]}, "
                          f"{SCENE_BG[e['scene']]}.")
-    risky = [(d, n) for d, n in zip(days, voters) if d["risk"] != "low"]
+    # само рисковите дни, на които може да се вярва (увереност поне medium)
+    risky = [(d, n) for d, n in zip(days, voters)
+             if d["risk"] != "low" and d["confidence"] != "low"]
     if risky:
         parts.append(f"{place}: внимание — " + ", ".join(
             f"{ddmm(d['date'])} ({RISK_BG[d['risk']]}, {d['agreement']}/{n} източника)"
             for d, n in risky) + ".")
     else:
-        parts.append(f"{place}: без рискови дни в следващите {len(days)} дни.")
+        unsure = any(d["risk"] != "low" for d in days)  # има риск, но само от един източник
+        parts.append(f"{place}: без {'потвърдени ' if unsure else ''}рискови дни "
+                     f"в следващите {len(days)} дни.")
     if failed:
         parts.append("Без данни от: " + ", ".join(failed) + ".")
     return " ".join(parts)
