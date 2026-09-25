@@ -1,0 +1,48 @@
+/* Живо небе — неутрална тема по подразбиране.
+   Двигателят чете само тези custom properties. За свой бранд копирай файла и смени стойностите —
+   или ги задай направо в CSS на сайта си върху селектора zhivo-nebe. */
+
+zhivo-nebe {
+  /* шрифт: само системни, без външни шрифтове */
+  --zn-font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+
+  /* основа */
+  --zn-bg: transparent;          /* фон зад целия компонент */
+  --zn-fg: #1d232b;              /* основен текст */
+  --zn-muted: #5f6b78;           /* второстепенен текст */
+  --zn-card: #ffffff;            /* фон на панелите */
+  --zn-border: rgba(20, 30, 40, .12);
+  --zn-accent: #3b73b9;          /* стълбчетата за валеж */
+  --zn-radius: 14px;
+
+  /* светофар и рискове */
+  --zn-risk-low: #2e9d5b;
+  --zn-risk-medium: #d99a00;
+  --zn-risk-high: #d2402f;
+  --zn-risk-none: #9aa4af;
+
+  /* видимото съобщение за резервен режим */
+  --zn-warn-bg: #fff4d6;
+  --zn-warn-fg: #5a4300;
+  --zn-warn-border: #f0d48a;
+
+  /* небето: височина, текст върху него, частици (дъжд, сняг, звезди) */
+  --zn-sky-height: 260px;
+  --zn-sky-fg: #ffffff;
+  --zn-particle: rgba(255, 255, 255, .75);
+  /* --zn-sky-top / --zn-sky-bottom надделяват цветовете на сцената;
+     по сцена: zhivo-nebe[data-scene="rain"][data-daylight="night"] { --zn-sky-top: …; } */
+}
+
+@media (prefers-color-scheme: dark) {
+  zhivo-nebe {
+    --zn-fg: #e6eaef;
+    --zn-muted: #9aa6b2;
+    --zn-card: #171c23;
+    --zn-border: rgba(255, 255, 255, .1);
+    --zn-accent: #6aa0e0;
+    --zn-warn-bg: #3a3017;
+    --zn-warn-fg: #f5e2b0;
+    --zn-warn-border: #6b5a2a;
+  }
+}
