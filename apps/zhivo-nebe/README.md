@@ -7,6 +7,7 @@
 - `agent/` — тегли източниците, смята съгласие и риск, пише `forecast.json` (`agent/fetch.py`, виж по-долу)
 - `core/` — JS двигател без рамка: чете `forecast.json` (или пада обратно към Open-Meteo) и избира сцена
 - `themes/` — само визия. Твоят сайт носи своя тема, двигателят остава същият
+- `site/` — публичната демонстрация за Варна; публикува се всеки час в GitHub Pages (`.github/workflows/pages.yml`)
 
 Градът е конфигурация: копирай `config/city.example.json`, смени координатите и събитията.
 Договорът между частите: `schema/forecast.schema.md`.
@@ -107,3 +108,82 @@ python3 -m unittest discover -s agent/tests -v
 
 Записаните отговори са в `agent/tests/fixtures/` — нормален случай, един паднал източник
 (503, таймаут, лош JSON, 404, грешна структура) и всички паднали.
+
+## Двигателят: `core/zhivo-nebe.js`
+
+ES модул без зависимости и без build стъпка. Уеб компонент:
+
+```html
+<link rel="stylesheet" href="themes/default.css">
+<script type="module" src="core/zhivo-nebe.js"></script>
+<zhivo-nebe src="forecast.json" lat="43.2141" lon="27.9147" city="Варна" lang="bg"></zhivo-nebe>
+```
+
+| Атрибут | Какво прави |
+|---|---|
+| `src` | пътят до `forecast.json` (схема 2) |
+| `lat`, `lon`, `city` | за резервния режим, ако файлът липсва (иначе се взимат от файла) |
+| `lang` | `bg` или `en`; по подразбиране — езикът на страницата |
+| `max-age-h` | след колко часа файлът се смята за остарял (3) |
+| `before-h`, `after-h` | прозорецът около проява в резервния режим (1 и 3, както в конфигурацията) |
+| `thresholds` | JSON с праговете — само за резервния режим и сцената „сега“ (по подразбиране като `city.example.json`) |
+| `now` | подменя текущото време (ISO) — за тестове и обучения |
+
+**Какво показва:** небето е сцената (`clear`/`clouds`/`rain`/`storm`/`heat`/`snow`) за най-близката
+предстояща проява, ден или нощ по височината на слънцето в часа ѝ. Без проява или без оценка за нея —
+за следващите 3 часа. Рисува се с CSS градиент и Canvas, без изображения; при
+`prefers-reduced-motion` е неподвижно. Отдолу: следващите 24 часа, дните с `risk` и `confidence`
+(риск само от един източник е избледнял) и светофар за всяка проява. Презарежда се на 30 минути.
+
+**Резервен режим.** Ако `forecast.json` липсва, е по друга версия, е празен или е по-стар от 3 часа,
+компонентът тегли директно от Open-Meteo (трите модела в една заявка, без ключ) и смята медиана, риск,
+съгласие и увереност по същите правила като агента. Това се казва с жълта лента: MET Norway и 7Timer
+тогава не участват. Ако и Open-Meteo не отговаря, показва последния наличен файл с предупреждение
+(или съобщение, че прогноза няма).
+
+**Визия — само през CSS custom properties** (пълният списък с коментари е в `themes/default.css`):
+`--zn-font`, `--zn-bg`, `--zn-fg`, `--zn-muted`, `--zn-card`, `--zn-border`, `--zn-accent`, `--zn-radius`,
+`--zn-risk-low|medium|high|none`, `--zn-warn-bg|fg|border`, `--zn-sky-height`, `--zn-sky-fg`,
+`--zn-sky-scrim`, `--zn-particle`, `--zn-sky-top`, `--zn-sky-bottom`. Компонентът слага на себе си
+`data-scene`, `data-daylight` и `data-mode`, така че темата може да сменя небето по сцена:
+
+```css
+zhivo-nebe[data-scene="rain"][data-daylight="night"] { --zn-sky-top: #0a0f1a; --zn-sky-bottom: #1f2a3a; }
+```
+
+Частите на компонента са достъпни и през `::part(...)`: `root`, `sky`, `notice`, `summary`, `hours`,
+`days`, `events`, `traffic-light`, `footer`.
+
+## Публикуване: GitHub Pages
+
+`.github/workflows/pages.yml` се пуска на всеки час (в :17) и при push в `main`:
+тестове → `agent/fetch.py` → сглобяване на `_site/` (`site/`, `core/zhivo-nebe.js`, `themes/`,
+`forecast.json`) → `actions/deploy-pages`. **Не прави commit** — прогнозата живее само в публикувания сайт.
+
+Ако `fetch.py` излезе с код ≠ 0, ходът публикува последната публикувана прогноза (изтегля я от самия
+сайт) и накрая се маркира като неуспешен — сайтът не остава празен, а пропускът се вижда в Actions.
+Ако предишна няма, публикува се без прогноза и страницата минава на резервния режим.
+
+Еднократна настройка в GitHub: **Settings → Pages → Source: GitHub Actions**.
+
+## Ръчна проверка локално
+
+```bash
+cd apps/zhivo-nebe
+python3 agent/fetch.py --out out/forecast.json          # иска мрежа
+rm -rf _site && mkdir -p _site/core _site/themes
+cp -r site/. _site/ && cp core/zhivo-nebe.js _site/core/ && cp themes/*.css _site/themes/
+cp out/forecast.json _site/
+python3 -m http.server -d _site 8000                     # → http://localhost:8000
+```
+
+Без мрежа: сложи `core/tests/fixtures/forecast.sample.json` като `_site/forecast.json` и в DevTools
+задай `document.querySelector('zhivo-nebe').setAttribute('now', '2026-06-20T06:30+03:00')` —
+така файлът е „пресен“ и се вижда сцената „буря“ за примерната проява.
+За да видиш резервния режим, изтрий `_site/forecast.json`.
+
+Тестовете на двигателя (Node 20+, без зависимости):
+
+```bash
+node --test core/tests/*.test.mjs
+```

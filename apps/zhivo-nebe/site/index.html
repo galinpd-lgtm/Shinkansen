@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Живо небе · Варна</title>
+  <meta name="description" content="Прогноза за събития на открито от пет безплатни независими източника — с риск, съгласие и увереност. Отворен код.">
+  <link rel="stylesheet" href="themes/default.css">
+  <script type="module" src="core/zhivo-nebe.js"></script>
+  <style>
+    /* Стиловете на страницата. Компонентът взима визията си от themes/default.css. */
+    :root {
+      --page-bg: #f3f5f8; --page-fg: #1d232b; --page-muted: #5f6b78; --page-card: #fff;
+      --page-border: rgba(20, 30, 40, .12); --page-link: #2f64a8;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --page-bg: #0e1217; --page-fg: #e6eaef; --page-muted: #9aa6b2; --page-card: #171c23;
+              --page-border: rgba(255, 255, 255, .1); --page-link: #8ab8ec; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--page-bg); color: var(--page-fg);
+      font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    }
+    a { color: var(--page-link); }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 0 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 8px; }
+    header h1 { margin: 0; font-size: 1.35rem; }
+    .lang { display: inline-flex; border: 1px solid var(--page-border); border-radius: 999px; overflow: hidden; }
+    .lang button {
+      font: inherit; font-size: .85rem; padding: 6px 14px; border: 0; cursor: pointer;
+      background: transparent; color: var(--page-fg);
+    }
+    .lang button[aria-pressed="true"] { background: var(--page-fg); color: var(--page-bg); }
+    .lead { color: var(--page-muted); margin: 0 0 18px; font-size: 1.05rem; }
+    main section { margin: 34px 0; }
+    h2 { font-size: 1.15rem; margin: 0 0 10px; }
+    .card { background: var(--page-card); border: 1px solid var(--page-border); border-radius: 14px; padding: 16px 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--page-border); vertical-align: top; }
+    th { font-weight: 600; }
+    .scroll { overflow-x: auto; }
+    ol, ul { padding-left: 1.3em; }
+    li { margin: 4px 0; }
+    code { font-size: .9em; background: var(--page-border); padding: 1px 5px; border-radius: 5px; }
+    footer { color: var(--page-muted); font-size: .85rem; padding: 24px 0 40px; border-top: 1px solid var(--page-border); }
+    /* двуезичност: показваме само езика на <html lang> */
+    html[lang="bg"] [lang="en"]:not(html), html[lang="en"] [lang="bg"]:not(html) { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1><span lang="bg">Живо небе · Варна</span><span lang="en">Living Sky · Varna</span></h1>
+      <div class="lang" role="group" aria-label="Език / Language">
+        <button type="button" data-set-lang="bg" aria-pressed="true">БГ</button>
+        <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </header>
+
+    <p class="lead" lang="bg">Прогноза за събития на открито, сверена между пет безплатни независими източника.
+      Фонът е сцената за следващата проява. Под него — следващите 24 часа, рисковите дни и светофар за всяка проява.</p>
+    <p class="lead" lang="en">A forecast for outdoor events, cross-checked across five free, independent sources.
+      The background is the scene for the next event. Below it: the next 24 hours, risky days and a traffic light for every event.</p>
+
+    <zhivo-nebe src="forecast.json" lat="43.2141" lon="27.9147" city="Варна"></zhivo-nebe>
+
+    <main>
+      <section>
+        <h2 lang="bg">Какво е това</h2>
+        <h2 lang="en">What this is</h2>
+        <div lang="bg">
+          <p>Малък агент (<code>agent/fetch.py</code>) всеки час тегли прогнозата от пет източника, смята медианата,
+            разминаването и риска и записва един файл — <code>forecast.json</code>. Тази страница само го чете и рисува.
+            Няма сървър, няма ключове, няма бисквитки и няма външни библиотеки.</p>
+          <p>Демонстрацията ползва примерната конфигурация за Варна. Ако в нея няма предстоящи прояви,
+            небето показва времето сега.</p>
+        </div>
+        <div lang="en">
+          <p>A small agent (<code>agent/fetch.py</code>) pulls the forecast from five sources every hour, computes the median,
+            the disagreement and the risk, and writes a single file — <code>forecast.json</code>. This page only reads and draws it.
+            No server, no keys, no cookies, no external libraries.</p>
+          <p>The demo uses the example configuration for Varna. If it lists no upcoming events,
+            the sky shows the weather right now.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2 lang="bg">Как се чете</h2>
+        <h2 lang="en">How to read it</h2>
+        <ul lang="bg">
+          <li><b>Небето</b> — сцената (ясно, облачно, дъжд, буря, жега, сняг) за най-близката проява, ден или нощ според часа ѝ.
+            Без проява — за следващите три часа.</li>
+          <li><b>Светофарът</b> — рискът за проявата в прозореца около нея: зелено нисък, жълто среден, червено висок; сиво — прогнозата още не стига дотам.</li>
+          <li><b>24 часа</b> — температура, вероятност за валеж (стълбче), пориви и ϟ при гръмотевици. Задръж върху часа за подробности и разминаването между източниците.</li>
+          <li><b>Дни</b> — риск и <b>увереност</b>. Увереността казва колко източника сами стигат поне до този риск.
+            Риск, който идва само от един източник, остава видим, но избледнял — и не влиза в обобщението.</li>
+          <li><b>Жълта лента</b> — резервен режим: файлът липсва или е по-стар от 3 часа, затова страницата тегли направо от Open-Meteo (без другите два доставчика).</li>
+        </ul>
+        <ul lang="en">
+          <li><b>The sky</b> — the scene (clear, cloudy, rain, storm, heat, snow) for the nearest event, day or night by its start time.
+            With no event — for the next three hours.</li>
+          <li><b>The traffic light</b> — the event's risk in the window around it: green low, amber medium, red high; grey — the forecast does not reach it yet.</li>
+          <li><b>24 hours</b> — temperature, chance of precipitation (bar), gusts, and ϟ for thunder. Hover an hour for details and the spread between sources.</li>
+          <li><b>Days</b> — risk and <b>confidence</b>. Confidence tells how many sources reach at least that risk on their own.
+            A risk that comes from a single source stays visible but faded — and is left out of the summary.</li>
+          <li><b>Yellow banner</b> — fallback mode: the file is missing or older than 3 hours, so the page fetches straight from Open-Meteo (without the other two providers).</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 lang="bg">Източници</h2>
+        <h2 lang="en">Sources</h2>
+        <p lang="bg">Пет източника от три независими доставчика. Не всички дават всичко — и ние не досмятаме това, което липсва.
+          Всяка величина се смята само от източниците, които реално я дават, и само в часовете, за които имат собствена стойност.</p>
+        <p lang="en">Five sources from three independent providers. Not all of them provide everything — and we do not make up what is missing.
+          Each quantity is computed only from the sources that actually provide it, and only for the hours they have their own value for.</p>
+        <div class="card scroll">
+          <table>
+            <thead>
+              <tr>
+                <th><span lang="bg">Величина</span><span lang="en">Quantity</span></th>
+                <th>Open-Meteo<br><small>ICON · GFS · ECMWF</small></th>
+                <th>MET Norway</th>
+                <th>7Timer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><span lang="bg">Температура</span><span lang="en">Temperature</span></td><td>✓</td><td>✓</td><td>✓</td></tr>
+              <tr><td><span lang="bg">Вероятност за валеж</span><span lang="en">Chance of precipitation</span></td>
+                <td><span lang="bg">✓ (ECMWF често няма)</span><span lang="en">✓ (often missing for ECMWF)</span></td>
+                <td><span lang="bg">— за нашия край дава само милиметри</span><span lang="en">— only millimetres for this region</span></td>
+                <td><span lang="bg">— само код 0–9</span><span lang="en">— only a 0–9 code</span></td></tr>
+              <tr><td><span lang="bg">Среден вятър</span><span lang="en">Mean wind</span></td>
+                <td>✓</td><td><span lang="bg">✓ (m/s → km/h)</span><span lang="en">✓ (m/s → km/h)</span></td>
+                <td><span lang="bg">≈ от скала 1–8</span><span lang="en">≈ from a 1–8 scale</span></td></tr>
+              <tr><td><span lang="bg">Пориви</span><span lang="en">Gusts</span></td>
+                <td>✓</td><td><span lang="bg">— за нашия край липсват</span><span lang="en">— not available for this region</span></td><td>—</td></tr>
+              <tr><td><span lang="bg">Облачност</span><span lang="en">Cloud cover</span></td>
+                <td>✓</td><td>✓</td><td><span lang="bg">≈ от скала 1–9</span><span lang="en">≈ from a 1–9 scale</span></td></tr>
+              <tr><td><span lang="bg">Гръмотевици</span><span lang="en">Thunder</span></td><td>✓</td><td>✓</td><td>✓</td></tr>
+              <tr><td><span lang="bg">Стъпка</span><span lang="en">Time step</span></td>
+                <td><span lang="bg">1 ч</span><span lang="en">1 h</span></td>
+                <td><span lang="bg">1 ч, по-нататък 6 ч</span><span lang="en">1 h, later 6 h</span></td>
+                <td><span lang="bg">3 ч</span><span lang="en">3 h</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p lang="bg">На практика <b>вероятността за валеж и поривите идват само от Open-Meteo</b>. Затова ден, който е рисков заради дъжд,
+          се сверява само с неговите модели. Трите модела са от един доставчик — ако той падне, остават MET Norway и 7Timer, но без вероятност за валеж.</p>
+        <p lang="en">In practice, <b>chance of precipitation and gusts come only from Open-Meteo</b>. So a day that is risky because of rain
+          is checked only against its models. All three models come from one provider — if it fails, MET Norway and 7Timer remain, but without a chance of precipitation.</p>
+      </section>
+
+      <section>
+        <h2 lang="bg">Направи го за своя град</h2>
+        <h2 lang="en">Make it for your city</h2>
+        <ol lang="bg">
+          <li>Копирай <code>config/city.example.json</code>, смени града, координатите, часовата зона и проявите.</li>
+          <li>Пусни агента: <code>python3 agent/fetch.py config/tvoyat-grad.json</code> — само Python 3, без ключове.</li>
+          <li>Сложи на страницата си <code>&lt;zhivo-nebe src="forecast.json"&gt;&lt;/zhivo-nebe&gt;</code> и модула <code>core/zhivo-nebe.js</code>.</li>
+          <li>Облечи го в своя бранд само с CSS променливи (<code>--zn-bg</code>, <code>--zn-accent</code>, <code>--zn-font</code> …) — виж <code>themes/default.css</code>.</li>
+        </ol>
+        <ol lang="en">
+          <li>Copy <code>config/city.example.json</code> and change the city, coordinates, time zone and events.</li>
+          <li>Run the agent: <code>python3 agent/fetch.py config/your-city.json</code> — plain Python 3, no keys.</li>
+          <li>Put <code>&lt;zhivo-nebe src="forecast.json"&gt;&lt;/zhivo-nebe&gt;</code> and the <code>core/zhivo-nebe.js</code> module on your page.</li>
+          <li>Dress it in your own brand with CSS variables only (<code>--zn-bg</code>, <code>--zn-accent</code>, <code>--zn-font</code> …) — see <code>themes/default.css</code>.</li>
+        </ol>
+        <p><a href="https://github.com/galinpd-lgtm/Shinkansen/tree/main/apps/zhivo-nebe#readme">
+          <span lang="bg">Пълното ръководство (README)</span><span lang="en">Full guide (README, in Bulgarian)</span></a></p>
+      </section>
+    </main>
+
+    <footer>
+      <span lang="bg">Данни: Open-Meteo, MET Norway, 7Timer — безплатни източници без ключ. Прогнозата е ориентир, не гаранция.
+        Обновява се всеки час. Отворен код:</span>
+      <span lang="en">Data: Open-Meteo, MET Norway, 7Timer — free sources, no key. The forecast is guidance, not a guarantee.
+        Updated every hour. Open source:</span>
+      <a href="https://github.com/galinpd-lgtm/Shinkansen">github.com/galinpd-lgtm/Shinkansen</a>
+    </footer>
+  </div>
+
+  <script>
+    // Превключвател БГ/EN: сменя <html lang>, езика на компонента и заглавието; помни избора локално
+    (function () {
+      var titles = { bg: 'Живо небе · Варна', en: 'Living Sky · Varna' };
+      function setLang(l) {
+        document.documentElement.lang = l;
+        document.title = titles[l];
+        document.querySelector('zhivo-nebe').setAttribute('lang', l);
+        document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+          b.setAttribute('aria-pressed', String(b.dataset.setLang === l));
+        });
+        try { localStorage.setItem('zn-lang', l); } catch (e) { /* без хранилище — просто не помним */ }
+      }
+      var saved = null;
+      try { saved = localStorage.getItem('zn-lang'); } catch (e) { /* няма */ }
+      var guess = (navigator.language || 'bg').slice(0, 2) === 'bg' ? 'bg' : 'en';
+      setLang(saved === 'bg' || saved === 'en' ? saved : guess);
+      document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+        b.addEventListener('click', function () { setLang(b.dataset.setLang); });
+      });
+    })();
+  </script>
+</body>
+</html>

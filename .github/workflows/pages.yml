@@ -1,0 +1,93 @@
+# Живо небе — публикуване в GitHub Pages.
+# Всеки час и при push в main: тества, пуска агента, сглобява сайта и го публикува.
+# Нищо не се записва обратно в репото (без commit) — прогнозата живее само в публикувания сайт.
+name: Живо небе — Pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 * * * *"   # на всеки час, не точно в :00, когато GitHub е най-натоварен
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: apps/zhivo-nebe
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Тестове (Python и JS, без мрежа)
+        run: |
+          python3 -m unittest discover -s agent/tests
+          node --test core/tests/*.test.mjs
+
+      - name: Последната публикувана прогноза (резерва)
+        run: |
+          mkdir -p out
+          if curl -fsS --max-time 30 "${{ steps.pages.outputs.base_url }}/forecast.json" -o out/previous.json \
+             && python3 -c "import json,sys; d=json.load(open('out/previous.json')); sys.exit(0 if d.get('hours') else 1)"; then
+            echo "Има предишна прогноза за резерва."
+          else
+            rm -f out/previous.json
+            echo "Няма годна предишна прогноза (първо публикуване или празен файл)."
+          fi
+
+      - id: fetch
+        name: Агент (fetch.py)
+        run: |
+          set +e
+          python3 agent/fetch.py --out out/forecast.json
+          code=$?
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            if [ -f out/previous.json ]; then
+              cp out/previous.json out/forecast.json
+              echo "::error::fetch.py излезе с код $code — публикува се последната налична прогноза."
+            else
+              echo "::error::fetch.py излезе с код $code и няма предишна прогноза — сайтът ще мине на резервния режим (Open-Meteo)."
+            fi
+          fi
+
+      - name: Сглобяване на сайта
+        run: |
+          rm -rf _site
+          mkdir -p _site/core _site/themes
+          cp -r site/. _site/
+          cp core/zhivo-nebe.js _site/core/
+          cp themes/*.css _site/themes/
+          if [ -f out/forecast.json ]; then cp out/forecast.json _site/forecast.json; fi
+          find _site -type f | sort
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/zhivo-nebe/_site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      # сайтът е публикуван с последната налична прогноза, но ходът трябва да се вижда като неуспешен
+      - name: Отчет за агента
+        if: steps.fetch.outputs.code != '0'
+        run: |
+          echo "::error::Агентът не е обновил прогнозата (код ${{ steps.fetch.outputs.code }}). Виж стъпката „Агент (fetch.py)“."
+          exit 1
