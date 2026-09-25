@@ -91,18 +91,6 @@ def rec(temp_c=None, precip_pct=None, gust_kmh=None, cloud_pct=None, thunder=Fal
             "cloud_pct": cloud_pct, "thunder": bool(thunder), "snow": bool(snow)}
 
 
-def expand(steps):
-    """Прави часов ред от записи с различна стъпка: [(utc_време, стъпка_ч, запис)].
-    Точните часове имат предимство; 3- и 6-часовите стъпки запълват само празното."""
-    out = {}
-    for dt, _step, r in steps:
-        out[dt] = r
-    for dt, step, r in steps:
-        for k in range(1, step):
-            out.setdefault(dt + timedelta(hours=k), r)
-    return out
-
-
 def num(x):
     return None if x is None else float(x)
 
@@ -157,14 +145,14 @@ def fetch_met_norway(cfg, fetcher, sleep):
 
 
 def parse_met_norway(data):
-    steps = []
+    """Само часовете, за които MET има собствена стойност. След ~2,5 дни стъпката е
+    6 часа — междинните часове остават без MET (без пренасяне и без интерполация)."""
+    out = {}
     for ts in data["properties"]["timeseries"]:
         dt = datetime.fromisoformat(ts["time"].replace("Z", "+00:00")).astimezone(UTC)
         d = ts["data"]
         inst = d["instant"]["details"]
-        nxt, step = d.get("next_1_hours"), 1
-        if not nxt:  # след ~2,5 дни MET дава 6-часови стъпки
-            nxt, step = d.get("next_6_hours"), 6
+        nxt = d.get("next_1_hours") or d.get("next_6_hours")
         if not nxt:
             continue
         sym = nxt.get("summary", {}).get("symbol_code", "")
@@ -174,13 +162,13 @@ def parse_met_norway(data):
         # само истински порив; средният вятър (wind_speed) не се подменя като порив
         g = inst.get("wind_speed_of_gust")
         w = inst.get("wind_speed")
-        steps.append((dt, step, rec(
+        out[dt] = rec(
             num(inst.get("air_temperature")), num(p),
             None if g is None else g * 3.6,  # m/s → km/h
             num(inst.get("cloud_area_fraction")),
             thunder="thunder" in sym, snow=("snow" in sym or "sleet" in sym),
-            wind_kmh=None if w is None else w * 3.6)))  # m/s → km/h
-    return expand(steps)
+            wind_kmh=None if w is None else w * 3.6)  # m/s → km/h
+    return out
 
 
 # 7Timer дава класове, не стойности: cloudcover 1–9 → представителен процент
@@ -191,7 +179,7 @@ WIND_7T_KMH = {1: 0.5, 2: 6.7, 3: 20.5, 4: 33.8, 5: 50.4, 6: 75.1, 7: 102.8, 8: 
 
 
 def fetch_7timer(cfg, fetcher, sleep):
-    """7Timer, продукт civil — 3-часови стъпки в UTC (init + timepoint).
+    """7Timer, продукт civil — 3-часови стъпки; времето е init (UTC) + timepoint часа.
     Няма вероятност за валеж и пориви (prec_amount е код 0–9); средният вятър е клас 1–8.
     Дава температура, среден вятър, облачност, гръмотевица и сняг."""
     q = urllib.parse.urlencode({"lon": cfg["lon"], "lat": cfg["lat"], "ac": 0,
@@ -201,17 +189,19 @@ def fetch_7timer(cfg, fetcher, sleep):
 
 
 def parse_7timer(data):
+    """Само часовете init + timepoint (на всеки 3 часа). init е в UTC, затова заявката е с
+    tzshift=0; към местно време се минава чак на изхода. Междинните часове остават без 7Timer."""
     init = datetime.strptime(str(data["init"]), "%Y%m%d%H").replace(tzinfo=UTC)
-    steps = []
+    out = {}
     for s in data["dataseries"]:
         dt = init + timedelta(hours=int(s["timepoint"]))
         weather = s.get("weather", "")
         wind = s.get("wind10m") or {}
-        steps.append((dt, 3, rec(
+        out[dt] = rec(
             num(s.get("temp2m")), None, None, num(CLOUD_7T.get(s.get("cloudcover"))),
             thunder="ts" in weather, snow=(s.get("prec_type") == "snow" or "snow" in weather),
-            wind_kmh=WIND_7T_KMH.get(wind.get("speed")))))
-    return expand(steps)
+            wind_kmh=WIND_7T_KMH.get(wind.get("speed")))
+    return out
 
 
 def source_fn(name):
@@ -293,33 +283,31 @@ def gives(recs, f):
 
 
 def day_agreement(level, merged, per_source, th):
-    """Колко източника стигат до същия риск като общата прогноза.
+    """Колко източника сами стигат ПОНЕ до риска на деня (за нисък ден — колко казват „нисък“).
     Броим само източниците, които реално дават величината, определила риска:
     ако денят е „висок“ заради вероятност за валеж, MET и 7Timer не гласуват.
-    Връща (съгласни, подкрепящи, допуснати до гласуване). „Подкрепящ“ е източник,
-    който сам стига поне до това ниво — за ниския риск това са съгласните."""
+    Връща (съгласни, допуснати до гласуване)."""
     if level:
         drivers = tuple(f for f in RISK_FIELDS if risk_of(merged, th, (f,)) == level)
     else:
         drivers = RISK_FIELDS
-    agree = support = eligible = 0
+    agree = eligible = 0
     for recs in per_source:
         has = tuple(f for f in drivers if gives(recs, f))
         if not recs or not has:
             continue
         eligible += 1
         own = risk_of(recs, th, has)
-        agree += own == level
-        support += own >= level if level else own == 0
-    return agree, support, eligible
+        agree += own >= level if level else own == 0
+    return agree, eligible
 
 
-def confidence_of(support, eligible):
+def confidence_of(agree, eligible):
     """Доколко да вярваме на дневния риск. Риск от един източник не се ескалира —
     остава по стойността си, но е с ниска увереност и не влиза в summary."""
-    if support <= 1:
+    if agree <= 1:
         return "low"
-    if support >= 3 and support >= 0.6 * eligible:
+    if agree >= 3 and agree >= 0.6 * eligible:
         return "high"
     return "medium"
 
@@ -384,9 +372,9 @@ def build_forecast(cfg, fetcher=http_get, sleep=time.sleep, now=None, log=None):
         merged = [combined[dt] for dt in dts]
         level = risk_of(merged, th)
         per_source = [[s[dt] for dt in dts if dt in s] for s in ok.values()]
-        agree, support, eligible = day_agreement(level, merged, per_source, th)
+        agree, eligible = day_agreement(level, merged, per_source, th)
         days.append({"date": d.isoformat(), "risk": RISK_LEVELS[level], "agreement": agree,
-                     "confidence": confidence_of(support, eligible)})
+                     "confidence": confidence_of(agree, eligible)})
         voters.append(eligible)
 
     win = cfg.get("event_window", {})
@@ -482,13 +470,73 @@ def write_json(obj, path):
     os.replace(tmp, path)
 
 
+DEBUG_COLS = ("temp_c", "precip_pct", "wind_kmh", "gust_kmh", "cloud_pct", "thunder")
+
+
+def parse_local_hour(text, tz):
+    """„2026-09-30T14“ или „2026-09-30T14:00“ (местно време) → час в UTC."""
+    for fmt in ("%Y-%m-%dT%H", "%Y-%m-%dT%H:%M"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=tz).astimezone(UTC)
+        except ValueError:
+            pass
+    raise ValueError(f"непознат формат на час: {text!r} (очаква се 2026-09-30T14)")
+
+
+def debug_hour(cfg, ok, failed, dt):
+    """Таблица за един час: стойностите на всеки източник поотделно, после медианата
+    и разминаването. Източник без собствена стойност за часа не участва."""
+    tz = ZoneInfo(cfg.get("timezone", "UTC"))
+
+    def cell(v):
+        if v is None:
+            return "—"
+        if isinstance(v, bool):
+            return "да" if v else "не"
+        return f"{v:.1f}"
+
+    w = max([len(n) for n in list(ok) + failed] + [len("медиана")])
+    lines = [f"Час {local_iso(dt, tz)} ({dt.strftime('%H:%M')} UTC) — {cfg.get('city', '')}",
+             " " * w + "".join(f"{c:>12}" for c in DEBUG_COLS)]
+    present = []
+    for name, data in ok.items():
+        r = data.get(dt)
+        if r is None:
+            lines.append(f"{name:<{w}}  няма собствена стойност за този час — не участва")
+        else:
+            present.append(r)
+            lines.append(f"{name:<{w}}" + "".join(f"{cell(r[c]):>12}" for c in DEBUG_COLS))
+    for name in failed:
+        lines.append(f"{name:<{w}}  паднал източник")
+    if not present:
+        lines.append("Нито един източник няма стойност за този час.")
+        return "\n".join(lines)
+    m = combine_hour(present)
+    lines.append(f"{'медиана':<{w}}" + "".join(f"{cell(m[c]):>12}" for c in DEBUG_COLS))
+    lines.append(f"участват {len(present)} от {len(ok)} · " + " · ".join(
+        f"{k} {cell(m[k])}" for k in SPREAD_FIELDS) +
+        f" · риск за часа {RISK_LEVELS[risk_of([m], cfg.get('thresholds', {}))]}")
+    return "\n".join(lines)
+
+
 def main(argv=None, fetcher=http_get, sleep=time.sleep, now=None):
     ap = argparse.ArgumentParser(description="Живо небе: прогноза от няколко източника → forecast.json")
     ap.add_argument("config", nargs="?", default=DEFAULT_CONFIG, help="конфигурация на град (JSON)")
     ap.add_argument("--out", help="къде да се запише forecast.json (по подразбиране: `output` от конфигурацията)")
+    ap.add_argument("--debug-hour", metavar="ГГГГ-ММ-ДДTЧЧ",
+                    help="само печата стойностите на всеки източник за този местен час; не пише файл")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
+    if args.debug_hour:
+        tz = ZoneInfo(cfg.get("timezone", "UTC"))
+        try:
+            dt = parse_local_hour(args.debug_hour, tz)
+        except ValueError as e:
+            ap.error(str(e))
+        ok, failed = collect(cfg, fetcher, sleep, lambda m: print(m, file=sys.stderr))
+        print(debug_hour(cfg, ok, failed, dt))
+        return 0 if ok else 1
     out = args.out or cfg.get("output") or "forecast.json"
     fc = build_forecast(cfg, fetcher=fetcher, sleep=sleep, now=now)
     write_json(fc, out)

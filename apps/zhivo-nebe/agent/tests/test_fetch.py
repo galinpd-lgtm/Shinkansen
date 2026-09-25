@@ -11,7 +11,9 @@ import sys
 import tempfile
 import unittest
 import urllib.error
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -202,7 +204,9 @@ class RealSamples(unittest.TestCase):
             "timepoint": 3, "cloudcover": 9, "prec_type": "none", "prec_amount": 0, "temp2m": 16,
             "rh2m": "60%", "wind10m": {"direction": "E", "speed": 3}, "weather": "cloudyday"}]}
         out = fetch.parse_7timer(data)
-        self.assertEqual(sorted(out), [datetime(2026, 9, 25, h, tzinfo=timezone.utc) for h in (15, 16, 17)])
+        # init 12 UTC + 3 ч = 15:00 UTC = 18:00 във Варна; без пренасяне към 16 и 17 ч
+        self.assertEqual(list(out), [datetime(2026, 9, 25, 15, tzinfo=timezone.utc)])
+        self.assertEqual(fetch.local_iso(list(out)[0], ZoneInfo("Europe/Sofia")), "2026-09-25T18:00+03:00")
         r = out[datetime(2026, 9, 25, 15, tzinfo=timezone.utc)]
         self.assertEqual((r["temp_c"], r["cloud_pct"]), (16.0, 97.0))
         self.assertIsNone(r["precip_pct"])
@@ -243,12 +247,12 @@ class PerQuantitySources(unittest.TestCase):
         merged[0]["precip_pct"] = 80
         level = fetch.risk_of(merged, self.TH)
         self.assertEqual(level, 2)
-        self.assertEqual(fetch.day_agreement(level, merged, [om1, om2, met, timer], self.TH), (1, 1, 2))
+        self.assertEqual(fetch.day_agreement(level, merged, [om1, om2, met, timer], self.TH), (1, 2))
 
     def test_low_day_everyone_votes(self):
         per = [[fetch.rec(20, 5, 20, 30)], [fetch.rec(21, None, None, 30)]]
         merged = [fetch.combine_hour([p[0] for p in per])]
-        self.assertEqual(fetch.day_agreement(0, merged, per, self.TH), (2, 2, 2))
+        self.assertEqual(fetch.day_agreement(0, merged, per, self.TH), (2, 2))
 
     def test_normal_case_quantities(self):
         net = FakeNet()
@@ -333,7 +337,7 @@ class Confidence(unittest.TestCase):
         day = {d["date"]: d for d in fc["days"]}["2026-06-20"]
         self.assertEqual(day["risk"], "medium")        # стойността не се пипа
         self.assertEqual(day["confidence"], "low")
-        self.assertEqual(day["agreement"], 0)          # icon сам казва „висок“, gfs — „нисък“
+        self.assertEqual(day["agreement"], 1)          # само icon стига поне до „среден“
         self.assertNotIn("20.06", fc["summary"])
         self.assertIn("без потвърдени рискови дни", fc["summary"])
 
@@ -348,6 +352,105 @@ class Confidence(unittest.TestCase):
         day = {d["date"]: d for d in fc["days"]}["2026-06-20"]
         self.assertEqual((day["risk"], day["confidence"]), ("high", "medium"))
         self.assertIn("20.06 (висок, 2/2 източника)", fc["summary"])
+
+
+# Случаят от GX10, 30.09, 14:00 местно (11:00 UTC): трите модела на Open-Meteo дават
+# 17,6 / 22,6 / 20,9 °C; 7Timer има стойности само на 3 часа, MET на този хоризонт — на 6.
+DAY = "2026-09-30"
+OM_TEMPS = {"icon_seamless": 17.6, "gfs_seamless": 22.6, "ecmwf_ifs025": 20.9}
+
+
+def om_answer(temp):
+    times = [f"{DAY}T{h:02d}:00" for h in range(24)]
+    return json.dumps({"hourly": {
+        "time": times, "temperature_2m": [temp] * 24, "precipitation_probability": [10] * 24,
+        "wind_speed_10m": [10.0] * 24, "wind_gusts_10m": [20.0] * 24,
+        "cloud_cover": [40] * 24, "weather_code": [2] * 24}}).encode()
+
+
+TIMER_ANSWER = json.dumps({"product": "civil", "init": "2026093000", "dataseries": [
+    {"timepoint": tp, "cloudcover": 5, "prec_type": "none", "prec_amount": 0, "temp2m": 26,
+     "rh2m": "60%", "wind10m": {"direction": "E", "speed": 2}, "weather": "pcloudyday"}
+    for tp in (3, 6, 9, 12, 15, 18, 21)]}).encode()
+
+MET_ANSWER = json.dumps({"properties": {"timeseries": [
+    {"time": f"{DAY}T{h:02d}:00:00Z", "data": {
+        "instant": {"details": {"air_temperature": 14.0, "cloud_area_fraction": 50.0, "wind_speed": 3.0}},
+        "next_6_hours": {"summary": {"symbol_code": "cloudy"}, "details": {"precipitation_amount": 0.0}}}}
+    for h in (0, 6, 12, 18)]}}).encode()
+
+
+def sparse_net(url):
+    name = source_of(url)
+    if name == "7timer":
+        return TIMER_ANSWER
+    if name == "met-norway":
+        return MET_ANSWER
+    return om_answer(OM_TEMPS[name.split(":")[1]])
+
+
+SPARSE_NOW = datetime(2026, 9, 30, 0, tzinfo=timezone.utc)
+
+
+class SparseSteps(unittest.TestCase):
+    """Източник участва само в часовете, за които има собствена стойност."""
+
+    def setUp(self):
+        self.fc = fetch.build_forecast(dict(CONFIG, events=[]), fetcher=sparse_net, sleep=lambda s: None,
+                                       now=SPARSE_NOW, log=lambda m: None)
+        self.h = {x["t"]: x for x in self.fc["hours"]}
+
+    def test_hour_without_3h_source(self):
+        # 14:00 местно = 11 UTC: нито 7Timer (9 и 12 UTC), нито MET (6 и 12 UTC) имат стойност
+        h = self.h[f"{DAY}T14:00+03:00"]
+        self.assertEqual(h["spread_temp"], 5.0)
+        self.assertEqual(h["temp_c"], 20.9)
+
+    def test_hour_with_3h_source(self):
+        # 15:00 местно = 12 UTC: участват и 7Timer (26), и MET (14)
+        h = self.h[f"{DAY}T15:00+03:00"]
+        self.assertEqual(h["spread_temp"], 12.0)
+        # 12:00 местно = 9 UTC: 7Timer да, MET не
+        self.assertEqual(self.h[f"{DAY}T12:00+03:00"]["spread_temp"], 8.4)
+
+    def test_7timer_hours_are_utc(self):
+        timer = fetch.parse_7timer(json.loads(TIMER_ANSWER))
+        local = [fetch.local_iso(dt, ZoneInfo("Europe/Sofia"))[11:16] for dt in timer]
+        self.assertEqual(local, ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"])
+
+
+class DebugHour(unittest.TestCase):
+    def run_debug(self, hour):
+        out, err = io.StringIO(), io.StringIO()
+        with tempfile.TemporaryDirectory() as d:
+            target = os.path.join(d, "forecast.json")
+            with redirect_stdout(out), redirect_stderr(err):
+                code = fetch.main(["--debug-hour", hour, "--out", target], fetcher=sparse_net,
+                                  sleep=lambda s: None, now=SPARSE_NOW)
+            self.assertFalse(os.path.exists(target))  # режимът само печата
+        return code, out.getvalue()
+
+    def test_prints_each_source(self):
+        code, text = self.run_debug("2026-09-30T14")
+        self.assertEqual(code, 0)
+        self.assertIn("2026-09-30T14:00+03:00 (11:00 UTC)", text)
+        for v in ("17.6", "22.6", "20.9"):
+            self.assertIn(v, text)
+        lines = {ln.split()[0]: ln for ln in text.splitlines() if ln.strip()}
+        self.assertIn("не участва", lines["7timer"])
+        self.assertIn("не участва", lines["met-norway"])
+        self.assertIn("участват 3 от 5", text)
+        self.assertIn("spread_temp 5.0", text)
+
+    def test_hour_with_all_sources(self):
+        _, text = self.run_debug("2026-09-30T15:00")
+        self.assertIn("участват 5 от 5", text)
+        self.assertIn("26.0", text)
+        self.assertIn("spread_temp 12.0", text)
+
+    def test_bad_hour(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            fetch.main(["--debug-hour", "30.09 14ч"], fetcher=sparse_net, sleep=lambda s: None)
 
 
 class OneSourceDown(SchemaMixin, unittest.TestCase):
