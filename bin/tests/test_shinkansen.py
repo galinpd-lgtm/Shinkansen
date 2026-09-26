@@ -43,6 +43,13 @@ class Parse(unittest.TestCase):
         self.assertEqual((info["name"], info["description"], info["level"]), ("x-y", "Кога: винаги.", "чернови"))
         self.assertIsNone(sk.parse_skill_md("без frontmatter")["name"])
 
+    def test_metadata_block(self):
+        info = sk.parse_skill_md("---\nname: x\ndescription: Б\nmetadata:\n  description_en: \"E: yes\"\n"
+                                 "  other: 2\n---\n## Ниво\nчете\n")
+        self.assertEqual(info["metadata"], {"description_en": "E: yes", "other": "2"})
+        self.assertEqual(info["description"], "Б")
+        self.assertEqual(sk.parse_skill_md("---\nname: y\n---\n")["metadata"], {})
+
     def test_one_line(self):
         self.assertEqual(sk.one_line("a\n b\t c"), "a b c")
         self.assertEqual(len(sk.one_line("x" * 500)), sk.SUMMARY_MAX)
@@ -144,8 +151,24 @@ class RealSkills(unittest.TestCase):
                 for sec in SECTIONS:
                     self.assertRegex(s["body"], r"(?m)^## %s\s*$" % re.escape(sec))
                 self.assertTrue(os.path.isfile(s["entry"]), s["entry"])
+                self.assert_yaml_safe(os.path.join(s["path"], "SKILL.md"))
                 tests = os.path.join(s["path"], "tests")
                 self.assertTrue(any(f.startswith("test_") for f in os.listdir(tests)))
+
+    def assert_yaml_safe(self, path):
+        """Claude Code чете frontmatter като YAML. Непоставена в кавички стойност не бива да
+        започва с кавичка или специален знак и не бива да съдържа „: “ или „ #“ — иначе YAML се чупи."""
+        with open(path, encoding="utf-8") as f:
+            front = f.read().split("\n---", 1)[0]
+        for line in front.splitlines()[1:]:
+            m = re.match(r"^\s*[A-Za-z_-]+:\s*(.*)$", line)
+            self.assertTrue(m, "ред извън ключ: стойност: %r" % line)
+            v = m.group(1)
+            if not v or (len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'"):
+                continue
+            self.assertNotRegex(v[0], r"[\"'\[\]{}>|*&!%@`#,?:-]", "%s: %r" % (path, v[:30]))
+            self.assertNotIn(": ", v, path)
+            self.assertNotIn(" #", v, path)
 
     def test_list_real(self):
         buf = io.StringIO()

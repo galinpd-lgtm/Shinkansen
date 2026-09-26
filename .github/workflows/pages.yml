@@ -1,6 +1,7 @@
-# Живо небе (/) и Сграда в 3D (/3d/) — публикуване в GitHub Pages.
+# Живо небе (/), Сграда в 3D (/3d/) и витрината (/showcase/) — публикуване в GitHub Pages.
 # Всеки час и при push в main: тества, пуска агента, сглобява сайта и го публикува.
-# 3D демото е отделно: ако неговите тестове паднат, Живо небе пак се публикува, а /3d/ се пропуска.
+# 3D демото и витрината са отделни: ако техните тестове паднат, Живо небе пак се публикува,
+# а съответната част се пропуска.
 # Нищо не се записва обратно в репото (без commit) — прогнозата живее само в публикувания сайт.
 name: Живо небе — Pages
 
@@ -100,6 +101,16 @@ jobs:
           cp blender/skeleton.example.json "$DEST/skeleton.json"
           du -sh "$DEST"
 
+      - id: showcase
+        name: Витрина — тестове и сглобяване под /showcase/ (каталогът от skills/*/SKILL.md)
+        continue-on-error: true
+        working-directory: .
+        run: |
+          python3 -m unittest discover -s bin/tests
+          python3 -m unittest discover -s site/showcase/tests
+          python3 site/showcase/build.py apps/zhivo-nebe/_site/showcase \
+            --repo-url "${{ github.server_url }}/${{ github.repository }}" --commit "${{ github.sha }}"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/zhivo-nebe/_site
@@ -111,6 +122,12 @@ jobs:
         if: steps.v3d_tests.outcome != 'success'
         run: |
           echo "::error::Тестовете на apps/venue-3d паднаха — /3d/ не е публикувано в този ход."
+          exit 1
+
+      - name: Отчет за витрината
+        if: always() && steps.showcase.outcome == 'failure'
+        run: |
+          echo "::error::Витрината не е сглобена — /showcase/ не е публикувано в този ход. Виж стъпката „Витрина“."
           exit 1
 
       # сайтът е публикуван с последната налична прогноза, но ходът трябва да се вижда като неуспешен

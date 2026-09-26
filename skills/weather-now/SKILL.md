@@ -1,6 +1,8 @@
 ---
 name: weather-now
 description: „Вали ли сега“ за точка по координати — текущото време от няколко безплатни източника (Open-Meteo, MET Norway) плюс METAR от най-близкото летище по ICAO код, с общ отговор дали вали. Използвай при „вали ли“, „какво е времето в момента“, „има ли дъжд сега“, METAR, проверка преди събитие на открито. Не е прогноза за следващите дни.
+metadata:
+  description_en: “Is it raining right now?” for a point by coordinates — current weather from several free sources plus the METAR of the nearest airport by ICAO code, with one combined answer. Not a multi-day forecast.
 ---
 
 # weather-now — вали ли сега
