@@ -1,6 +1,8 @@
 ---
 name: pazach
 description: Пазач — чете готови състояния (monitor_lite /api/now, probe_device, произволен status.json, дати на изтичане), пише обобщен status.json за лентата и вика по webhook само при смяна на нивото и при възстановяване. Използвай при „следи машините“, „кажи ми, ако нещо падне“, „кога изтича сертификатът/домейнът“, „сутрешна сводка“, rip/off, настройка на таймерите на пазача.
+metadata:
+  description_en: A watchman — reads ready-made states (machine monitor, device probe, any status.json, expiry dates), writes one combined status.json and calls a webhook only when a level changes or recovers.
 ---
 
 # pazach — вика само когато нещо се промени
