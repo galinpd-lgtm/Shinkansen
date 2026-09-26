@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Сграда в 3D · входове</title>
+  <meta name="description" content="Отворен двигател: сграда, която се върти в браузъра, с входовете, касата, паркинга и спирката. Пример: измислена арена.">
+  <script type="module" src="core/venue-3d.js"></script>
+  <style>
+    /* Стиловете на страницата. Компонентът взима визията си от --v3d-* променливите. */
+    :root {
+      --page-bg: #f3f5f8; --page-fg: #1d232b; --page-muted: #5f6b78; --page-border: rgba(20, 30, 40, .12); --page-link: #2f64a8;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --page-bg: #0e1217; --page-fg: #e6eaef; --page-muted: #9aa6b2; --page-border: rgba(255, 255, 255, .1); --page-link: #8ab8ec; }
+      venue-3d {
+        --v3d-fg: #e6eaef; --v3d-muted: #9aa6b2; --v3d-panel: #171c23; --v3d-border: rgba(255, 255, 255, .12);
+        --v3d-bg: linear-gradient(180deg, #1b2533, #11161d); --v3d-ground: #2a3038;
+        --v3d-pin-bg: rgba(23, 28, 35, .95); --v3d-pin-fg: #e6eaef;
+        --v3d-warn-bg: #3a3017; --v3d-warn-fg: #f5e2b0; --v3d-warn-border: #6b5a2a;
+      }
+    }
+    venue-3d {
+      --v3d-font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+      --v3d-accent: #3b73b9;
+      --v3d-pin-entrance: #2f7d4f; --v3d-pin-accessible: #3b73b9; --v3d-pin-service: #8a5a1f; --v3d-pin-transport: #5a5f6b;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page-bg); color: var(--page-fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+    a { color: var(--page-link); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 8px; }
+    header h1 { margin: 0; font-size: 1.35rem; }
+    .lang { display: inline-flex; border: 1px solid var(--page-border); border-radius: 999px; overflow: hidden; }
+    .lang button { font: inherit; font-size: .85rem; padding: 6px 14px; border: 0; cursor: pointer; background: transparent; color: var(--page-fg); }
+    .lang button[aria-pressed="true"] { background: var(--page-fg); color: var(--page-bg); }
+    .lead { color: var(--page-muted); margin: 0 0 18px; font-size: 1.05rem; max-width: 70ch; }
+    main section { margin: 34px 0; max-width: 78ch; }
+    h2 { font-size: 1.15rem; margin: 0 0 10px; }
+    li { margin: 4px 0; }
+    code { font-size: .9em; background: var(--page-border); padding: 1px 5px; border-radius: 5px; }
+    footer { color: var(--page-muted); font-size: .85rem; padding: 24px 0 40px; border-top: 1px solid var(--page-border); }
+    html[lang="bg"] [lang="en"]:not(html), html[lang="en"] [lang="bg"]:not(html) { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1><span lang="bg">Сграда в 3D · входове</span><span lang="en">Building in 3D · entrances</span></h1>
+      <div class="lang" role="group" aria-label="Език / Language">
+        <button type="button" data-set-lang="bg" aria-pressed="true">БГ</button>
+        <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </header>
+    <p class="lead" lang="bg">Завърти сградата и виж откъде се влиза. Примерът е <b>измислена</b> кръгла арена — двигателят е общ за всяка сграда.</p>
+    <p class="lead" lang="en">Turn the building and see where to get in. The example is a <b>made-up</b> round arena — the engine works for any building.</p>
+
+    <venue-3d src="venue.json"></venue-3d>
+
+    <main>
+      <section>
+        <h2 lang="bg">Как се ползва</h2>
+        <h2 lang="en">How to use it</h2>
+        <ul lang="bg">
+          <li><b>Мишка:</b> влачене — въртене; колелце — увеличение; десен бутон или Shift + влачене — преместване.</li>
+          <li><b>Пръст:</b> един пръст — въртене; два — увеличение и преместване.</li>
+          <li><b>Клавиатура:</b> списъкът вдясно — Tab и стрелки, Enter избира; Esc затваря картата. Стрелките местят сградата, когато тя е на фокус.</li>
+          <li><b>Точка</b> (в 3D или в списъка) — отваря карта с описание и камерата отива при нея. Етикетите се скриват, когато точката е зад сградата.</li>
+          <li><b>Отвори сградата</b> — скрива покрива и нивата над избраното. <b>Разглобен изглед</b> — раздалечава нивата; клик върху ниво или етикета му го избира.</li>
+        </ul>
+        <ul lang="en">
+          <li><b>Mouse:</b> drag — rotate; wheel — zoom; right button or Shift + drag — move.</li>
+          <li><b>Touch:</b> one finger — rotate; two — zoom and move.</li>
+          <li><b>Keyboard:</b> the list on the right — Tab and arrows, Enter selects; Esc closes the card. Arrow keys move the building when it has focus.</li>
+          <li><b>A point</b> (in 3D or in the list) opens a card and flies the camera to it. Labels hide when the point is behind the building.</li>
+          <li><b>Open the building</b> hides the roof and the levels above the selected one. <b>Exploded view</b> pulls the levels apart; click a level or its label to focus it.</li>
+        </ul>
+      </section>
+      <section>
+        <h2 lang="bg">Направи го за своя сграда</h2>
+        <h2 lang="en">Make it for your building</h2>
+        <ol lang="bg">
+          <li>Опиши сградата с числа в <code>skeleton.json</code> — барабан, нива, пръстен, пилони, покрив (купол, плосък, конус, седло), крила, входове.</li>
+          <li>На машина с Blender: <code>blender -b --python blender/build_venue.py -- skeleton.json model.glb</code>. Без модел страницата строи временен от същите числа.</li>
+          <li>В <code>venue.json</code> запиши точките — входове, каса, паркинг, спирка — с имена на български и английски.</li>
+          <li>Облечи го в своя бранд с CSS променливите <code>--v3d-*</code>.</li>
+        </ol>
+        <ol lang="en">
+          <li>Describe the building with numbers in <code>skeleton.json</code> — drum, levels, ring, pylons, roof (dome, flat, cone, saddle), wings, entrances.</li>
+          <li>On a machine with Blender: <code>blender -b --python blender/build_venue.py -- skeleton.json model.glb</code>. Without a model the page builds a temporary one from the same numbers.</li>
+          <li>List the points in <code>venue.json</code> — entrances, box office, car park, stop — with names in Bulgarian and English.</li>
+          <li>Dress it in your own brand with the <code>--v3d-*</code> CSS variables.</li>
+        </ol>
+        <p><a href="https://github.com/galinpd-lgtm/Shinkansen/tree/main/apps/venue-3d#readme">
+          <span lang="bg">Пълното ръководство (README)</span><span lang="en">Full guide (README, in Bulgarian)</span></a></p>
+      </section>
+    </main>
+    <footer>
+      <span lang="bg">3D: three.js (MIT), вграден. Без бисквитки и без външни библиотеки. Още: </span>
+      <span lang="en">3D: three.js (MIT), bundled. No cookies, no external libraries. See also: </span>
+      <a href="../"><span lang="bg">Живо небе</span><span lang="en">Living Sky</span></a> ·
+      <a href="https://github.com/galinpd-lgtm/Shinkansen">github.com/galinpd-lgtm/Shinkansen</a>
+    </footer>
+  </div>
+  <script>
+    // Превключвател БГ/EN: сменя <html lang> и езика на компонента; помни избора локално
+    (function () {
+      var titles = { bg: 'Сграда в 3D · входове', en: 'Building in 3D · entrances' };
+      function setLang(l) {
+        document.documentElement.lang = l;
+        document.title = titles[l];
+        document.querySelector('venue-3d').setAttribute('lang', l);
+        document.querySelectorAll('[data-set-lang]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.setLang === l)); });
+        try { localStorage.setItem('v3d-lang', l); } catch (e) { /* без хранилище */ }
+      }
+      var saved = null;
+      try { saved = localStorage.getItem('v3d-lang'); } catch (e) { /* няма */ }
+      setLang(saved === 'bg' || saved === 'en' ? saved : ((navigator.language || 'bg').slice(0, 2) === 'bg' ? 'bg' : 'en'));
+      document.querySelectorAll('[data-set-lang]').forEach(function (b) { b.addEventListener('click', function () { setLang(b.dataset.setLang); }); });
+    })();
+  </script>
+</body>
+</html>
