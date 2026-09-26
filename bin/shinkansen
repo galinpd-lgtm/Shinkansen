@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""shinkansen — диспечер на помощниците в skills/.
+
+    shinkansen list                    — скиловете с описание и ниво
+    shinkansen show <скил>             — отпечатва SKILL.md
+    shinkansen run <скил> [аргументи]  — пуска го
+
+Ако е зададена SHINKANSEN_RUNS, всеки ход добавя един ред JSON в
+$SHINKANSEN_RUNS/<скил>.jsonl: {"t", "helper", "ok", "summary"}. По него частното
+табло разбира кой помощник мълчи. Редът е кратък и никога не носи данни от входа:
+обобщението идва от самия помощник (файлът в SHINKANSEN_SUMMARY_FILE) или е само
+кодът на изход и времето.
+
+Само стандартна библиотека на Python 3.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+LEVELS = ("чете", "чернови", "действа")
+SUMMARY_MAX = 200
+# Кодове на изход, общи за всички помощници (съвпадат с навиците на Python):
+#   0 — готово / чисто
+#   1 — помощникът е паднал (така излиза и необработено изключение)
+#   2 — грешна употреба (така излиза и argparse)
+#   3 — липсва зависимост (pymupdf, esbuild…)
+#   4 — помощникът работи, но има находки (изтичане, паднал тест)
+# „ok“ в дневника значи „помощникът си свърши работата“: 0 или 4.
+OK_CODES = (0, 4)
+EXIT_FINDINGS = 4
+
+
+def skills_dir():
+    return os.environ.get("SHINKANSEN_SKILLS") or os.path.join(ROOT, "skills")
+
+
+def parse_skill_md(text):
+    """SKILL.md → {"name", "description", "level", "body"}. Frontmatter е прост YAML: ключ: стойност."""
+    meta = {}
+    body = text
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.S)
+    if m:
+        body = m.group(2)
+        for line in m.group(1).splitlines():
+            kv = re.match(r"^([A-Za-z_-]+)\s*:\s*(.*)$", line)
+            if kv:
+                v = kv.group(2).strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                    v = v[1:-1]
+                meta[kv.group(1)] = v
+    # нивото е първата дума в раздела „## Ниво“
+    level = None
+    lm = re.search(r"^##\s+Ниво\s*\n+\s*\**([^\s*—–-]+)", body, re.M)
+    if lm:
+        level = lm.group(1).strip().lower()
+    return {"name": meta.get("name"), "description": meta.get("description", ""),
+            "level": level, "body": body}
+
+
+def entry_point(skill_path, name):
+    """Изпълнимият файл до SKILL.md: <име с долни черти>.py."""
+    return os.path.join(skill_path, name.replace("-", "_") + ".py")
+
+
+def find_skills(base=None):
+    base = base or skills_dir()
+    out = []
+    if not os.path.isdir(base):
+        return out
+    for name in sorted(os.listdir(base)):
+        path = os.path.join(base, name)
+        md = os.path.join(path, "SKILL.md")
+        if not NAME_RE.match(name) or not os.path.isfile(md):
+            continue
+        with open(md, encoding="utf-8") as f:
+            info = parse_skill_md(f.read())
+        info["dir"] = name
+        info["path"] = path
+        info["entry"] = entry_point(path, name)
+        out.append(info)
+    return out
+
+
+def get_skill(name, base=None):
+    if not NAME_RE.match(name or ""):
+        return None
+    for s in find_skills(base):
+        if s["dir"] == name:
+            return s
+    return None
+
+
+def one_line(text, limit=SUMMARY_MAX):
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def log_run(helper, ok, summary, runs_dir=None, now=None):
+    """Добавя ред в $SHINKANSEN_RUNS/<helper>.jsonl. Без SHINKANSEN_RUNS — нищо."""
+    runs_dir = runs_dir if runs_dir is not None else os.environ.get("SHINKANSEN_RUNS")
+    if not runs_dir:
+        return None
+    os.makedirs(runs_dir, exist_ok=True)
+    t = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    rec = {"t": t, "helper": helper, "ok": bool(ok), "summary": one_line(summary)}
+    path = os.path.join(runs_dir, helper + ".jsonl")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return rec
+
+
+def run_skill(skill, args, python=None):
+    """Пуска помощника с наследени stdin/stdout/stderr. → (код на изход, обобщение)."""
+    fd, summary_file = tempfile.mkstemp(prefix="shinkansen-summary-")
+    os.close(fd)
+    env = dict(os.environ, SHINKANSEN_SUMMARY_FILE=summary_file)
+    start = time.monotonic()
+    try:
+        try:
+            code = subprocess.call([python or sys.executable, skill["entry"]] + list(args), env=env)
+        except KeyboardInterrupt:
+            code = 130
+        took = time.monotonic() - start
+        with open(summary_file, encoding="utf-8", errors="replace") as f:
+            own = f.read().strip()
+    finally:
+        os.unlink(summary_file)
+    base = "exit %d · %.1fs" % (code, took)
+    return code, (own + " · " + base) if own else base
+
+
+def cmd_list(out=None):
+    out = out or sys.stdout
+    skills = find_skills()
+    if not skills:
+        print("няма скилове в %s" % skills_dir(), file=sys.stderr)
+        return 1
+    w = max(len(s["dir"]) for s in skills)
+    lw = max(len(s["level"] or "?") for s in skills) + 2
+    for s in skills:
+        level = "[%s]" % (s["level"] or "?")
+        desc = one_line(s["description"], 110)
+        print("%-*s  %-*s  %s" % (w, s["dir"], lw, level, desc), file=out)
+    return 0
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] in ("-h", "--help", "help"):
+        print(__doc__.strip().split("\n\n")[0])
+        return 0 if len(argv) >= 2 else 2
+    cmd = argv[1]
+    if cmd == "list":
+        return cmd_list()
+    if cmd in ("show", "run"):
+        if len(argv) < 3:
+            print("употреба: shinkansen %s <скил>" % cmd, file=sys.stderr)
+            return 2
+        skill = get_skill(argv[2])
+        if not skill:
+            print("няма такъв скил: %s (виж: shinkansen list)" % argv[2], file=sys.stderr)
+            return 2
+        if cmd == "show":
+            with open(os.path.join(skill["path"], "SKILL.md"), encoding="utf-8") as f:
+                sys.stdout.write(f.read())
+            return 0
+        if not os.path.isfile(skill["entry"]):
+            log_run(skill["dir"], False, "липсва изпълним файл")
+            print("липсва %s" % os.path.relpath(skill["entry"], ROOT), file=sys.stderr)
+            return 2
+        code, summary = run_skill(skill, argv[3:])
+        log_run(skill["dir"], code in OK_CODES, summary)
+        return code
+    print("непозната команда: %s (list · show · run)" % cmd, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
