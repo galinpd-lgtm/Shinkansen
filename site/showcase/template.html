@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shinkansen · витрина</title>
+  <meta name="description" content="Малка локална агентна платформа: агенти, помощници и правилата, по които работят. Демонстрации и каталог.">
+  <style>
+    /* Витрината — същите цветове като другите публични страници (Живо небе, Сграда в 3D). */
+    :root {
+      --page-bg: #f3f5f8; --page-fg: #1d232b; --page-muted: #5f6b78; --page-border: rgba(20, 30, 40, .12);
+      --page-link: #2f64a8; --card: #ffffff;
+      --lvl-read: #2f7d4f; --lvl-draft: #3b73b9; --lvl-act: #a8641c;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --page-bg: #0e1217; --page-fg: #e6eaef; --page-muted: #9aa6b2; --page-border: rgba(255, 255, 255, .1);
+              --page-link: #8ab8ec; --card: #151a21; --lvl-read: #5fc28a; --lvl-draft: #7fb0ec; --lvl-act: #e8a95c; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page-bg); color: var(--page-fg);
+           font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+    a { color: var(--page-link); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+    header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 22px 0 6px; }
+    header.top h1 { margin: 0; font-size: 1.5rem; letter-spacing: .01em; }
+    .lang { display: inline-flex; border: 1px solid var(--page-border); border-radius: 999px; overflow: hidden; flex: none; }
+    .lang button { font: inherit; font-size: .85rem; padding: 6px 14px; border: 0; cursor: pointer; background: transparent; color: var(--page-fg); }
+    .lang button[aria-pressed="true"] { background: var(--page-fg); color: var(--page-bg); }
+    .lead { color: var(--page-muted); margin: 0 0 8px; font-size: 1.08rem; max-width: 72ch; }
+    main section { margin: 40px 0; }
+    h2 { font-size: 1.2rem; margin: 0 0 12px; }
+    .narrow { max-width: 78ch; }
+    li { margin: 6px 0; }
+    code { font-size: .9em; background: var(--page-border); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+    .card, .skill { background: var(--card); border: 1px solid var(--page-border); border-radius: 12px; padding: 16px; }
+    .card h3, .skill h3 { margin: 0; font-size: 1.05rem; }
+    .card p, .skill p { margin: 8px 0 0; }
+    a.card { display: block; text-decoration: none; color: inherit; }
+    a.card:hover, a.card:focus-visible { border-color: var(--page-link); }
+    a.card .go { color: var(--page-link); font-size: .92rem; }
+    .skill { border-left: 4px solid var(--lvl, var(--page-border)); }
+    .skill header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .skill h3 code { background: none; padding: 0; font-size: 1rem; }
+    .skill .run { color: var(--page-muted); font-size: .88rem; }
+    .lvl-read { --lvl: var(--lvl-read); } .lvl-draft { --lvl: var(--lvl-draft); } .lvl-act { --lvl: var(--lvl-act); }
+    .badge { font-size: .78rem; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--lvl); color: var(--lvl); white-space: nowrap; }
+    .levels { color: var(--page-muted); font-size: .92rem; margin: -4px 0 14px; }
+    .levels b { color: var(--page-fg); font-weight: 600; }
+    .muted { color: var(--page-muted); }
+    footer { color: var(--page-muted); font-size: .85rem; padding: 24px 0 40px; border-top: 1px solid var(--page-border); }
+    /* двуезичност: показваме само езика на <html lang> */
+    html[lang="bg"] [lang="en"]:not(html), html[lang="en"] [lang="bg"]:not(html) { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <h1>🚄 Shinkansen</h1>
+      <div class="lang" role="group" aria-label="Език / Language">
+        <button type="button" data-set-lang="bg" aria-pressed="true">БГ</button>
+        <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </header>
+    <p class="lead" lang="bg">Малка локална агентна платформа. Агентите работят върху собствени модели на собствена машина,
+      без изходящ поток на данни. Всеки агент е малък, обявява какво може да прави и докладва и когато пада.</p>
+    <p class="lead" lang="en">A small local agent platform. The agents run on their own models on their own machine,
+      with no outbound flow of data. Each agent is small, declares what it is allowed to do, and reports when it fails.</p>
+    <p class="lead" lang="bg">Кръстен на бързия влак, който върви само по релсите, които сам си положиш.</p>
+    <p class="lead" lang="en">Named after the fast train that runs only on the rails you lay yourself.</p>
+
+    <main>
+      <section>
+        <h2><span lang="bg">Демонстрации</span><span lang="en">Demos</span></h2>
+        <div class="grid">
+          <a class="card" href="../">
+            <h3><span lang="bg">Живо небе</span><span lang="en">Living Sky</span></h3>
+            <p lang="bg">Сайт, чийто фон е прогнозата за следващото събитие на открито — сверена между пет независими
+              източника, с общ риск и доверие. Обновява се всеки час.</p>
+            <p lang="en">A site whose background is the forecast for the next outdoor event — cross-checked across five
+              independent sources, with a combined risk and confidence. Updated every hour.</p>
+            <p class="go"><span lang="bg">Отвори →</span><span lang="en">Open →</span></p>
+          </a>
+          <a class="card" href="../3d/">
+            <h3><span lang="bg">Сграда в 3D</span><span lang="en">Building in 3D</span></h3>
+            <p lang="bg">Сграда, която се върти в браузъра, с входовете, касата, паркинга и спирката. Моделът е построен от
+              числа; примерът е измислена арена.</p>
+            <p lang="en">A building that turns in the browser, with its entrances, box office, car park and stop. The model
+              is built from numbers; the example is a made-up arena.</p>
+            <p class="go"><span lang="bg">Отвори →</span><span lang="en">Open →</span></p>
+          </a>
+        </div>
+      </section>
+
+      <section>
+        <h2><span lang="bg">Помощници</span><span lang="en">Helpers</span> <span class="muted">· {{SKILL_COUNT}}</span></h2>
+        <p class="narrow" lang="bg">Общи инструменти, които хора и агенти викат по един и същи начин:
+          <code>bin/shinkansen list | show | run</code>. Каталогът е сглобен автоматично от описанията им.</p>
+        <p class="narrow" lang="en">Shared tools that people and agents call the same way:
+          <code>bin/shinkansen list | show | run</code>. This catalogue is built automatically from their descriptions.</p>
+        <p class="levels" lang="bg"><b>чете</b> {{COUNT_READ}} — нищо не променя · <b>чернови</b> {{COUNT_DRAFT}} — пише само нов
+          файл · <b>действа</b> {{COUNT_ACT}} — прави нещо навън, само когато човек го поиска</p>
+        <p class="levels" lang="en"><b>reads</b> {{COUNT_READ}} — changes nothing · <b>drafts</b> {{COUNT_DRAFT}} — only writes a
+          new file · <b>acts</b> {{COUNT_ACT}} — does something outside, only when a person asks for it</p>
+        <div class="grid">
+{{SKILLS}}
+        </div>
+      </section>
+
+      <section class="narrow">
+        <h2><span lang="bg">Протокол</span><span lang="en">Protocol</span></h2>
+        <p lang="bg">Правилата, по които работят хората и агентите. Всяко е платено с реален случай.</p>
+        <p lang="en">The rules people and agents work by. Each one was paid for by a real incident.</p>
+{{PROTOCOL}}
+      </section>
+
+      <section class="narrow">
+        <h2><span lang="bg">Историята</span><span lang="en">The story</span></h2>
+        <p lang="bg">Започна с въпрос „да ползваме ли готова агентна платформа?“. За една вечер стигнахме до собствено
+          репо, агент с пет източника на прогноза — и до проливен дъжд, който нито един от тях не видя. Уроците от
+          първата вечер:</p>
+        <p lang="en">It began with a question: “should we use a ready-made agent platform?”. In one evening we got to our
+          own repository, an agent with five forecast sources — and to a downpour that none of them saw. The lessons of
+          the first night:</p>
+{{LESSONS}}
+        <p><a href="{{REPO}}/blob/main/docs/STORY.md"><span lang="bg">Цялата история</span><span lang="en">The full story (in Bulgarian)</span></a>
+          · <a href="{{REPO}}"><span lang="bg">Изходният код</span><span lang="en">Source code</span></a></p>
+      </section>
+    </main>
+
+    <footer>
+      <span lang="bg">Сглобено</span><span lang="en">Built</span> {{BUILT}} ·
+      <span lang="bg">Без проследяване, без външни ресурси.</span><span lang="en">No tracking, no external resources.</span>
+    </footer>
+  </div>
+  <script>
+    // Език: ?lang=en, после запомненият избор, после езикът на браузъра. Без бисквитки.
+    (function () {
+      var KEY = "shinkansen-lang";
+      function set(lang, remember) {
+        document.documentElement.lang = lang;
+        document.querySelectorAll("[data-set-lang]").forEach(function (b) {
+          b.setAttribute("aria-pressed", String(b.getAttribute("data-set-lang") === lang));
+        });
+        document.title = lang === "en" ? "Shinkansen · showcase" : "Shinkansen · витрина";
+        if (remember) { try { localStorage.setItem(KEY, lang); } catch (e) { /* без памет — няма нужда */ } }
+      }
+      var q = new URLSearchParams(location.search).get("lang");
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) { /* частен режим */ }
+      var guess = (navigator.language || "bg").toLowerCase().indexOf("bg") === 0 ? "bg" : "en";
+      set(q === "en" || q === "bg" ? q : (saved || guess), false);
+      document.querySelectorAll("[data-set-lang]").forEach(function (b) {
+        b.addEventListener("click", function () { set(b.getAttribute("data-set-lang"), true); });
+      });
+    })();
+  </script>
+</body>
+</html>

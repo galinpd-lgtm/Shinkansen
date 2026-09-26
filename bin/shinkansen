@@ -41,27 +41,42 @@ def skills_dir():
     return os.environ.get("SHINKANSEN_SKILLS") or os.path.join(ROOT, "skills")
 
 
+def _unquote(v):
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        v = v[1:-1]
+    return v
+
+
 def parse_skill_md(text):
-    """SKILL.md → {"name", "description", "level", "body"}. Frontmatter е прост YAML: ключ: стойност."""
+    """SKILL.md → {"name", "description", "level", "metadata", "body"}.
+
+    Frontmatter е прост YAML: `ключ: стойност`, плюс едно ниво вложени ключове под
+    `metadata:` (по формата на скиловете), напр. `metadata:` / `  description_en: …`.
+    """
     meta = {}
+    metadata = {}
     body = text
     m = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.S)
     if m:
         body = m.group(2)
+        parent = None
         for line in m.group(1).splitlines():
+            nested = re.match(r"^\s+([A-Za-z_-]+)\s*:\s*(.*)$", line)
+            if nested and parent == "metadata":
+                metadata[nested.group(1)] = _unquote(nested.group(2))
+                continue
             kv = re.match(r"^([A-Za-z_-]+)\s*:\s*(.*)$", line)
             if kv:
-                v = kv.group(2).strip()
-                if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
-                    v = v[1:-1]
-                meta[kv.group(1)] = v
+                parent = kv.group(1)
+                meta[kv.group(1)] = _unquote(kv.group(2))
     # нивото е първата дума в раздела „## Ниво“
     level = None
     lm = re.search(r"^##\s+Ниво\s*\n+\s*\**([^\s*—–-]+)", body, re.M)
     if lm:
         level = lm.group(1).strip().lower()
     return {"name": meta.get("name"), "description": meta.get("description", ""),
-            "level": level, "body": body}
+            "level": level, "metadata": metadata, "body": body}
 
 
 def entry_point(skill_path, name):

@@ -1,6 +1,8 @@
 ---
 name: pdf-contact-sheet
 description: Всички страници на PDF в една картинка-мрежа с номера — за бърз триаж на сканове (празни, обърнати, дублирани, липсващи страници се виждат с един поглед). Използвай при „покажи ми PDF-а набързо“, „контактен лист“, „какво има в този скан“, „прегледай страниците“, преди OCR или изпращане на сканиран документ.
+metadata:
+  description_en: Every page of a PDF on one numbered image grid — for quick triage of scans (blank, rotated, duplicated or missing pages at a glance).
 ---
 
 # pdf-contact-sheet — целият PDF на една картинка

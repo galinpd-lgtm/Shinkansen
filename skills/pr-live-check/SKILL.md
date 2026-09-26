@@ -1,6 +1,8 @@
 ---
 name: pr-live-check
 description: Изпитва pull request в отделна временна папка — изтегля го, пуска тестовете (сам ги намира или по зададена команда), по желание пуска команда „на живо“, и дава отчет до 20 реда. Използвай при „изпитай PR-а“, „минават ли тестовете на pull request N“, „провери клона преди сливане“ (PROTOCOL.md, т. 4 и 7). Никога не слива и нищо не качва.
+metadata:
+  description_en: Tests a pull request in a separate temporary folder — fetches it, runs the tests (found automatically or given), optionally runs a live command, and reports in at most 20 lines. Never merges, never pushes.
 ---
 
 # pr-live-check — изпитай pull request, без да пипаш нищо

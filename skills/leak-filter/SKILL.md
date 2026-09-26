@@ -1,6 +1,8 @@
 ---
 name: leak-filter
 description: Търси изтичания в папка и в ЦЯЛАТА git история на всички клонове — IP адреси, домашни пътища, ключове и токени, плюс думи от личен списък извън репото. Използвай преди push, преди да направиш репо публично, при „провери за изтичане“, „има ли пароли/адреси в репото“, „филтър за изтичане“. Само докладва — никога не поправя.
+metadata:
+  description_en: Searches a folder and the ENTIRE git history of all branches for leaks — IP addresses, home paths, keys and tokens, plus words from a private list kept outside the repo. Reports only, never fixes.
 ---
 
 # leak-filter — провери за изтичане, преди да е станало публично

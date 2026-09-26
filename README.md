@@ -16,4 +16,7 @@
 - Нищо чувствително в репото: без ключове, пароли, лични данни.
 
 
+Публичната витрина (`/showcase/` в GitHub Pages) се сглобява от [`site/showcase`](site/showcase): какво е Shinkansen,
+демонстрациите, каталогът на помощниците — генериран от `skills/*/SKILL.md`, — правилата и историята.
+
 Историята на първата вечер: [docs/STORY.md](docs/STORY.md) · Правилата: [PROTOCOL.md](PROTOCOL.md)

@@ -1,6 +1,8 @@
 ---
 name: preview-serve
 description: Вдига временен статичен HTTP сървър за папка на зададен адрес и порт и сам спира след N минути (по подразбиране 127.0.0.1, 30 минути). Използвай при „покажи ми сайта“, „пусни го да го видя в браузъра“, „сервирай папката за малко“, преглед на _site/ или демо от телефона в същата мрежа. Не е за постоянен хостинг.
+metadata:
+  description_en: Starts a temporary static HTTP server for a folder on a given address and port and stops by itself after N minutes (127.0.0.1 and 30 minutes by default). Not for permanent hosting.
 ---
 
 # preview-serve — временен сървър, който спира сам

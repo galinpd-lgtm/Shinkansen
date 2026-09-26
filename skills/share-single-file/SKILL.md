@@ -1,6 +1,8 @@
 ---
 name: share-single-file
 description: Сглобява HTML страница с локалните ѝ JS/CSS/картинки/данни в ЕДИН .html файл, който се отваря с двоен клик, без сървър — за споделяне по поща, чат или флашка. Използвай при „направи го на един файл“, „прати страницата без сървър“, „single file HTML“, „вгради всичко в страницата“, демо за клиент. Иска esbuild.
+metadata:
+  description_en: Bundles an HTML page with its local JS, CSS, images and data into ONE .html file that opens with a double click, without a server — for sharing by mail, chat or USB stick. Needs esbuild.
 ---
 
 # share-single-file — цялата страница в един файл
