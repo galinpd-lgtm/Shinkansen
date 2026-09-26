@@ -1,0 +1,23 @@
+{
+  "name": "Example Arena",
+  "segments": 64,
+  "drum": { "radius": 40, "top_radius": 43, "height": 18 },
+  "levels": [
+    { "id": "level_0", "z": 0, "height": 6 },
+    { "id": "level_1", "z": 6, "height": 6 },
+    { "id": "level_2", "z": 12, "height": 6 }
+  ],
+  "ring": { "inner_radius": 40, "outer_radius": 48, "height": 6 },
+  "pylons": { "count": 12, "start_angle_deg": 15, "radius": 52, "width": 2.5, "depth": 3, "height": 24 },
+  "roof": { "type": "saddle", "edge_height_x": 12, "edge_height_y": 3, "center_height": 7.5, "overhang": 3, "thickness": 0.8 },
+  "wings": [
+    { "id": "west", "x": -60, "y": 0, "width": 26, "depth": 20, "height": 10, "rotation_deg": 0 }
+  ],
+  "entrances": [
+    { "id": "north", "angle_deg": 0, "width": 8, "height": 4.5, "level": "level_0" },
+    { "id": "east", "angle_deg": 90, "width": 6, "height": 4.5, "level": "level_0" },
+    { "id": "south", "angle_deg": 180, "width": 8, "height": 4.5, "level": "level_0" },
+    { "id": "accessible", "angle_deg": 120, "width": 3, "height": 3, "level": "level_0" },
+    { "id": "west_wing", "position": [-73, 0], "facing_deg": 270, "width": 5, "height": 4, "level": "level_0" }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "schema_version": "1",
+  "name": { "bg": "Примерна арена", "en": "Example Arena" },
+  "model": "model.glb",
+  "skeleton": "skeleton.json",
+  "north_deg": 0,
+  "camera": {
+    "target": [0, 0, 10], "distance": 190, "azimuth_deg": 200, "elevation_deg": 30,
+    "min_distance": 25, "max_distance": 420, "max_target_radius": 140
+  },
+  "roof_nodes": ["roof"],
+  "explode": { "gap": 12 },
+  "levels": [
+    { "id": "level_0", "name": { "bg": "Партер", "en": "Ground floor" }, "nodes": ["level_0", "ring", "wing_west"] },
+    { "id": "level_1", "name": { "bg": "Ниво 1", "en": "Level 1" } },
+    { "id": "level_2", "name": { "bg": "Ниво 2", "en": "Level 2" } }
+  ],
+  "hotspots": [
+    {
+      "id": "north", "kind": "entrance", "level": "level_0", "node": "entrance_north",
+      "position": [0, 50.5, 2.3],
+      "name": { "bg": "Северен вход (главен)", "en": "North entrance (main)" },
+      "description": { "bg": "Главният вход откъм площада. Отваря се час преди началото.", "en": "Main entrance from the square. Opens an hour before the start." }
+    },
+    {
+      "id": "east", "kind": "entrance", "level": "level_0", "node": "entrance_east",
+      "position": [50.5, 0, 2.3],
+      "name": { "bg": "Източен вход", "en": "East entrance" },
+      "description": { "bg": "Към секторите на изток. Най-близо до паркинга.", "en": "For the eastern sectors. Closest to the car park." }
+    },
+    {
+      "id": "south", "kind": "entrance", "level": "level_0", "node": "entrance_south",
+      "position": [0, -50.5, 2.3],
+      "name": { "bg": "Южен вход", "en": "South entrance" },
+      "description": { "bg": "Към южните сектори и изхода след края.", "en": "For the southern sectors and the way out after the event." }
+    },
+    {
+      "id": "accessible", "kind": "accessible_entrance", "level": "level_0", "node": "entrance_accessible",
+      "position": [43.73, -25.25, 1.6],
+      "name": { "bg": "Достъпен вход", "en": "Step-free entrance" },
+      "description": { "bg": "Без стъпала, с рампа и асансьор до всички нива.", "en": "Step-free, with a ramp and a lift to every level." }
+    },
+    {
+      "id": "west_wing", "kind": "entrance", "level": "level_0", "node": "entrance_west_wing",
+      "position": [-75, 0, 2],
+      "name": { "bg": "Вход през западното крило", "en": "West wing entrance" },
+      "description": { "bg": "За участници и доставки.", "en": "For performers and deliveries." }
+    },
+    {
+      "id": "tickets", "kind": "ticket_office", "level": "level_0",
+      "position": [29, 50.2, 1.5],
+      "name": { "bg": "Каса", "en": "Box office" },
+      "description": { "bg": "Билети и покани на място.", "en": "Tickets and guest-list pick-up." }
+    },
+    {
+      "id": "parking", "kind": "parking",
+      "position": [75, -65, 0.5],
+      "name": { "bg": "Паркинг", "en": "Car park" },
+      "description": { "bg": "На пет минути пеша до източния вход.", "en": "Five minutes' walk to the east entrance." }
+    },
+    {
+      "id": "bus", "kind": "transit_stop",
+      "position": [-25, 85, 0.5],
+      "name": { "bg": "Спирка", "en": "Bus stop" },
+      "description": { "bg": "Градски линии от центъра.", "en": "City lines from the centre." }
+    },
+    {
+      "id": "info", "kind": "info", "level": "level_1", "inside": true,
+      "position": [0, 20, 12.3],
+      "name": { "bg": "Информация (ниво 1)", "en": "Information (level 1)" },
+      "description": { "bg": "Гардероб, загубени вещи и помощ.", "en": "Cloakroom, lost property and help." }
+    }
+  ]
+}

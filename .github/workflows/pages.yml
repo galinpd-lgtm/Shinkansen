@@ -1,5 +1,6 @@
-# Живо небе — публикуване в GitHub Pages.
+# Живо небе (/) и Сграда в 3D (/3d/) — публикуване в GitHub Pages.
 # Всеки час и при push в main: тества, пуска агента, сглобява сайта и го публикува.
+# 3D демото е отделно: ако неговите тестове паднат, Живо небе пак се публикува, а /3d/ се пропуска.
 # Нищо не се записва обратно в репото (без commit) — прогнозата живее само в публикувания сайт.
 name: Живо небе — Pages
 
@@ -78,6 +79,27 @@ jobs:
           if [ -f out/forecast.json ]; then cp out/forecast.json _site/forecast.json; fi
           find _site -type f | sort
 
+      - id: v3d_tests
+        name: Сграда в 3D — тестове (Python и JS, без Blender)
+        continue-on-error: true
+        working-directory: apps/venue-3d
+        run: |
+          python3 -m unittest discover -s blender/tests
+          node --test core/tests/*.test.mjs
+
+      - name: Сграда в 3D — сглобяване под /3d/
+        if: steps.v3d_tests.outcome == 'success'
+        working-directory: apps/venue-3d
+        run: |
+          DEST=../zhivo-nebe/_site/3d
+          mkdir -p "$DEST/core" "$DEST/vendor"
+          cp -r site/. "$DEST/"
+          cp core/venue-3d.js core/venue-data.js core/skeleton-geometry.js "$DEST/core/"
+          cp -r vendor/three "$DEST/vendor/"
+          cp models/arena.example.glb "$DEST/model.glb"
+          cp blender/skeleton.example.json "$DEST/skeleton.json"
+          du -sh "$DEST"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/zhivo-nebe/_site
@@ -85,9 +107,15 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
 
+      - name: Отчет за 3D демото
+        if: steps.v3d_tests.outcome != 'success'
+        run: |
+          echo "::error::Тестовете на apps/venue-3d паднаха — /3d/ не е публикувано в този ход."
+          exit 1
+
       # сайтът е публикуван с последната налична прогноза, но ходът трябва да се вижда като неуспешен
       - name: Отчет за агента
-        if: steps.fetch.outputs.code != '0'
+        if: always() && steps.fetch.outputs.code != '0'   # и когато 3D отчетът вече е паднал
         run: |
           echo "::error::Агентът не е обновил прогнозата (код ${{ steps.fetch.outputs.code }}). Виж стъпката „Агент (fetch.py)“."
           exit 1
