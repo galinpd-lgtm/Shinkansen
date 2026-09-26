@@ -1,0 +1,19 @@
+# Пазачът — един ход. Пуска се от pazach.timer на 15 минути (потребителска услуга, без root).
+#
+#   mkdir -p ~/.config/systemd/user ~/.config/shinkansen
+#   cp skills/pazach/config.example.json ~/.config/shinkansen/pazach.json     # и попълни своите
+#   cp skills/pazach/systemd/pazach*.{service,timer} ~/.config/systemd/user/
+#   # поправи пътя до репото в ExecStart (тук: ~/Shinkansen)
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now pazach.timer pazach-digest.timer
+#   loginctl enable-linger "$USER"      # да върви и без влязъл потребител
+[Unit]
+Description=pazach — един ход на пазача
+
+[Service]
+Type=oneshot
+Environment=SHINKANSEN_RUNS=%h/.local/state/shinkansen/runs
+ExecStart=/usr/bin/python3 %h/Shinkansen/skills/pazach/pazach.py --config %h/.config/shinkansen/pazach.json --once
+# код 4 значи „има нередности“ — пазачът си е свършил работата
+SuccessExitStatus=4
+NoNewPrivileges=yes
