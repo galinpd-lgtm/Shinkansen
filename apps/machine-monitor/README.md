@@ -1,0 +1,73 @@
+# Монитор на машина — само чете, нищо не управлява
+
+Олекотен монитор за Linux машина и проба за мрежово устройство, на което не може да върви код (NAS).
+Отговаря на въпросите „как е машината“ и „има ли задачи сега и кога е минала последната успешна“.
+Общ е — имена, адреси и пътища идват от конфигурация **извън репото**. `config.example.json` е с измислени
+стойности (адреси от документационния диапазон `192.0.2.0/24`).
+
+**Части:**
+- `monitor_lite.py` — един файл, само стандартна библиотека на Python 3
+- `probe_device.py` — проба отвън: ping, TCP портове, задачите на машината, която пише в устройството
+- `config.example.json` — раздел `monitor` и раздел `probe`
+- `systemd/monitor-lite.service` — пример за потребителска услуга (без root)
+- `tests/` — тестове без root и без мрежа
+
+## Как се пуска
+
+```bash
+mkdir -p ~/.config/machine-monitor
+cp apps/machine-monitor/config.example.json ~/.config/machine-monitor/config.json    # и попълни своите
+python3 apps/machine-monitor/monitor_lite.py ~/.config/machine-monitor/config.json   # → http://127.0.0.1:8190/
+python3 apps/machine-monitor/probe_device.py ~/.config/machine-monitor/config.json   # → http://127.0.0.1:8191/
+```
+
+По подразбиране слуша само на `127.0.0.1`. За достъп от мрежата задай `"listen"` изрично.
+
+Тестове:
+
+```bash
+cd apps/machine-monitor && python3 -m unittest discover -s tests -v
+```
+
+## Адреси
+
+| Път | Какво връща |
+|---|---|
+| `/` | една тъмна HTML страница, без външни ресурси; опреснява се от `/api/now` на всеки 5 s |
+| `/api/now` | последната снимка (JSON) |
+| `/api/history` | точки за последните `history_minutes` минути (в паметта; при рестарт се губят) |
+
+Приема само `GET`/`HEAD`. Няма нито един адрес, който променя нещо.
+
+## `/api/now` на машина
+
+`name`, `uptime_s`, `load` (1/5/15 min), `cpu` (общо и по ядра, %), `memory` и `swap` (байтове, %),
+`temps` (от `/sys/class/thermal`, празно ако няма), `disks` (точките от `mounts`: заето/свободно),
+`raid` (от `/proc/mdstat`; `null` ако няма), `failed_units` (от `systemctl --failed`; `null` ако няма systemd),
+и `tasks`:
+
+```json
+"tasks": {
+  "running": [{"name": "rsync", "pid": 4242, "elapsed_s": 610}],
+  "logs":    [{"name": "nightly backup", "last_success": 1790391600.0, "ago_s": 25515, "found": true, "error": null}],
+  "summary": {"busy": true, "last_success": 1790391600.0}
+}
+```
+
+- **Процеси** — `tasks.processes`: шаблон (регулярен израз) срещу целия команден ред от `/proc/<pid>/cmdline`.
+  Показва се само името на правилото, PID и колко време върви — не и командният ред (може да носи пътища).
+- **Логове** — `tasks.logs`: последният ред, съвпадащ с `success`. Времето се взима от реда (по подразбиране
+  ISO `2026-09-26 03:14:15`); ако редът няма време — от най-близкия ред над него с време; ако и такъв няма —
+  от времето на последна промяна на файла. Друг формат: `time_regex` + `time_format` (за `strptime`).
+  Чете се само последният мегабайт от лога.
+
+## `/api/now` на проба
+
+`kind: "device"`, `device` (`reachable`, `ping`, `ports`) и по желание `tasks` — взети от `/api/now` на машината
+в `writer.url`, филтрирани по имената в `writer.processes` / `writer.logs`. Ако машината не отговаря,
+`tasks.source.ok` е `false` и грешката се вижда на страницата — не се мълчи.
+
+## Какво НЕ прави
+
+Не пише, не рестартира, не убива процеси, не монтира. Единствените външни команди са `systemctl --failed`
+и `ping -c 1` — и двете само четат.
