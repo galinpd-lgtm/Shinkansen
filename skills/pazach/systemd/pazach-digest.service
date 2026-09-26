@@ -1,0 +1,10 @@
+# Сутрешната сводка: ход + едно известие с всичко нередно и изтичащото до 14 дни.
+[Unit]
+Description=pazach — сутрешна сводка
+
+[Service]
+Type=oneshot
+Environment=SHINKANSEN_RUNS=%h/.local/state/shinkansen/runs
+ExecStart=/usr/bin/python3 %h/Shinkansen/skills/pazach/pazach.py --config %h/.config/shinkansen/pazach.json --digest
+SuccessExitStatus=4
+NoNewPrivileges=yes

@@ -1,0 +1,70 @@
+{
+  "_comment": "Пример с измислени имена и адреси (192.0.2.0/24 е за документация). Копирай извън репото.",
+  "status_file": "~/.local/state/shinkansen/status.json",
+  "state_file": "~/.local/state/shinkansen/pazach-state.json",
+  "timeout_seconds": 5,
+  "digest_expiry_days": 14,
+  "webhook": {
+    "url": "http://192.0.2.40:8080/hooks/pazach",
+    "timeout": 10,
+    "headers": {}
+  },
+  "checks": [
+    {
+      "name": "example-server",
+      "type": "monitor",
+      "url": "http://192.0.2.10:8190/api/now",
+      "link": "http://192.0.2.10:8190/",
+      "temp_warn_c": 80, "temp_crit_c": 90,
+      "disk_warn_percent": 85, "disk_crit_percent": 95,
+      "task_max_hours": 6,
+      "success_max_hours": 26
+    },
+    {
+      "name": "example-nas",
+      "type": "monitor",
+      "url": "http://192.0.2.10:8191/api/now",
+      "link": "http://192.0.2.10:8191/",
+      "success_max_hours": 26
+    },
+    {
+      "name": "forecast",
+      "type": "status_json",
+      "path": "~/example/out/forecast.json",
+      "field": "generated",
+      "label": "прогнозата е обновена",
+      "warn_age_hours": 3,
+      "crit_age_hours": 12
+    },
+    {
+      "name": "example-queue",
+      "type": "status_json",
+      "url": "http://192.0.2.12:9000/status.json",
+      "field": "queue.pending",
+      "label": "чакащи",
+      "warn_above": 50,
+      "crit_above": 200
+    },
+    {
+      "name": "example-cert",
+      "type": "expiry",
+      "what": "сертификатът на example.org",
+      "date": "2027-03-01",
+      "warn_days": 30,
+      "crit_days": 7
+    },
+    {
+      "name": "example-domain",
+      "type": "expiry",
+      "what": "домейнът example.org",
+      "date": "2027-06-15"
+    },
+    {
+      "name": "old-backup-box",
+      "type": "monitor",
+      "url": "http://192.0.2.13:8190/api/now",
+      "enabled": false,
+      "off_reason": "изведена от употреба"
+    }
+  ]
+}

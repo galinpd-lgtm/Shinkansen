@@ -12,6 +12,7 @@
 | [`pr-live-check`](pr-live-check/SKILL.md) | pull request в отделна папка → тестове → отчет до 20 реда; не слива | чете |
 | [`share-single-file`](share-single-file/SKILL.md) | HTML + локалните му JS/CSS/данни → един файл без сървър | чернови |
 | [`preview-serve`](preview-serve/SKILL.md) | временен статичен сървър, спира сам след N минути | действа |
+| [`pazach`](pazach/SKILL.md) | пазач: чете състояния, пише status.json, вика по webhook само при смяна | действа |
 
 ## Командата
 
