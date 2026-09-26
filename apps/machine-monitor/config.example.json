@@ -10,8 +10,9 @@
     "systemd": true,
     "tasks": {
       "processes": [
-        {"name": "rsync", "pattern": "(^|/)rsync( |$)"},
-        {"name": "nightly backup", "pattern": "example-backup\\.sh"}
+        {"name": "rsync", "pattern": "^rsync$", "match": "exe"},
+        {"name": "nightly backup", "pattern": "^example-backup\\.sh$", "match": "script"},
+        {"name": "benchmark", "pattern": "^example-bench\\.py$"}
       ],
       "logs": [
         {

@@ -184,14 +184,24 @@ def parse_meminfo(text):
 
 
 def disk_usage(mounts):
+    """Заето/свободно по файлова система. Точки върху едно и също устройство (st_dev)
+    се показват веднъж: {"mount": първата, "mounts": [всички], ...}."""
     out = []
+    by_dev = {}
     for mnt in mounts:
         try:
+            dev = os.stat(mnt).st_dev
+            if dev in by_dev:
+                if mnt not in by_dev[dev]["mounts"]:
+                    by_dev[dev]["mounts"].append(mnt)
+                continue
             u = shutil.disk_usage(mnt)
-            out.append({"mount": mnt, "total": u.total, "used": u.used, "free": u.free,
-                        "percent": round(100.0 * u.used / u.total, 1) if u.total else 0.0})
+            item = {"mount": mnt, "mounts": [mnt], "total": u.total, "used": u.used, "free": u.free,
+                    "percent": round(100.0 * u.used / u.total, 1) if u.total else 0.0}
+            by_dev[dev] = item
+            out.append(item)
         except OSError as e:
-            out.append({"mount": mnt, "error": e.strerror or str(e)})
+            out.append({"mount": mnt, "mounts": [mnt], "error": e.strerror or str(e)})
     return out
 
 
@@ -211,15 +221,54 @@ def failed_units():
 
 # ─────────────────────────── задачи ───────────────────────────
 
+MATCH_MODES = ("exe", "script", "cmdline")
+
+
 def compile_process_rules(rules):
-    """[{"name":..., "pattern": regex}] → [(name, compiled)]. Лош шаблон → ValueError с името му."""
+    """[{"name", "pattern", "match"}] → [(name, compiled, match)]. Грешка → ValueError с името.
+
+    match казва срещу какво се търси шаблонът:
+      "script"  (по подразбиране) — името на изпълнимия файл и името на първия аргумент-файл
+      "exe"     — само името на изпълнимия файл
+      "cmdline" — целият команден ред (широко: хваща и текст в аргументите на други програми)
+    """
     out = []
     for r in rules or []:
+        name = r.get("name") or r["pattern"]
+        mode = r.get("match", "script")
+        if mode not in MATCH_MODES:
+            raise ValueError("непознат match %r за процес %r (позволени: %s)"
+                             % (mode, name, ", ".join(MATCH_MODES)))
         try:
-            out.append((r.get("name") or r["pattern"], re.compile(r["pattern"])))
+            out.append((name, re.compile(r["pattern"]), mode))
         except re.error as e:
-            raise ValueError("лош шаблон за процес %r: %s" % (r.get("name"), e))
+            raise ValueError("лош шаблон за процес %r: %s" % (name, e))
     return out
+
+
+def script_arg(argv):
+    """Първият аргумент, който прилича на файл: не е опция, без интервали, с '/' или '.'.
+
+    Така `python3 /opt/x/bench.py` дава bench.py, а `claude -p "пусни бенчмарка"` — нищо.
+    """
+    for a in argv[1:]:
+        if a.startswith("-") or not a or any(c.isspace() for c in a):
+            continue
+        if "/" in a or "." in a:
+            return os.path.basename(a.rstrip("/"))
+        return None                       # първият не-опционен аргумент не е файл
+    return None
+
+
+def match_targets(argv, mode):
+    """Низовете, срещу които се търси шаблонът при даден режим."""
+    if mode == "cmdline":
+        return [" ".join(argv)]
+    exe = os.path.basename(argv[0]) if argv else ""
+    if mode == "exe":
+        return [exe]
+    script = script_arg(argv)
+    return [exe] + ([script] if script else [])
 
 
 def process_elapsed(stat_text, uptime_s, clk_tck):
@@ -231,7 +280,7 @@ def process_elapsed(stat_text, uptime_s, clk_tck):
 
 
 def scan_processes(rules, proc="/proc", self_pid=None, clk_tck=None):
-    """Кои от наблюдаваните процеси вървят сега. Съпоставя шаблона с целия команден ред.
+    """Кои от наблюдаваните процеси вървят сега. Срещу какво се търси — виж compile_process_rules.
 
     Връща [{"name", "pid", "elapsed_s"}]. Самият команден ред не се показва — може да носи пътища.
     """
@@ -252,11 +301,11 @@ def scan_processes(rules, proc="/proc", self_pid=None, clk_tck=None):
                 raw = f.read()
         except OSError:
             continue                      # процесът е свършил или няма права
-        cmd = raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()
-        if not cmd:
+        argv = [a.decode("utf-8", "replace") for a in raw.split(b"\0") if a]
+        if not argv:
             continue                      # нишка на ядрото
-        for name, rx in rules:
-            if rx.search(cmd):
+        for name, rx, mode in rules:
+            if any(rx.search(t) for t in match_targets(argv, mode)):
                 elapsed = None
                 stat = read_text(os.path.join(proc, entry, "stat"))
                 if stat:
@@ -530,7 +579,7 @@ function bytes(n){if(n==null)return"–";const u=["B","KB","MB","GB","TB","PB"];
 function dur(s){if(s==null)return"–";s=Math.round(s);if(s<60)return s+"s";const m=Math.floor(s/60);if(m<60)return m+"m";const h=Math.floor(m/60);if(h<48)return h+"h "+(m%60)+"m";return Math.floor(h/24)+"d "+(h%24)+"h"}
 function ago(s){return s==null?"never seen":dur(s)+" ago"}
 const bar=(v,hot)=>`<div class="bar"><i class="${v>=hot?"hot":""}" style="width:${Math.min(100,v||0)}%"></i></div>`;
-const row=(k,v,cls="")=>`<div class="row"><span class="k">${esc(k)}</span><span class="v ${cls}">${v}</span></div>`;
+const row=(k,v,cls="")=>`<div class="row"><span class="k" title="${esc(k)}">${esc(k)}</span><span class="v ${cls}">${v}</span></div>`;
 const card=(t,body,wide)=>`<section class="card${wide?" wide":""}"><h2>${esc(t)}</h2>${body}</section>`;
 let hist=[];
 function spark(key,max){
@@ -589,8 +638,9 @@ function render(d){
   }
   if(d.disks&&d.disks.length){
     let b="";for(const k of d.disks){
-      if(k.error){b+=row(k.mount,esc(k.error),"warn");continue}
-      b+=row(k.mount,bytes(k.free)+" free · "+pct(k.percent))+bar(k.percent,90);
+      const label=(k.mounts||[k.mount]).join(" · ");
+      if(k.error){b+=row(label,esc(k.error),"warn");continue}
+      b+=row(label,bytes(k.free)+" free · "+pct(k.percent))+bar(k.percent,90);
     }
     h+=card("Disks",b);
   }

@@ -130,7 +130,7 @@ class Tasks(unittest.TestCase):
         with open(os.path.join(d, "stat"), "w") as f:
             f.write(fake_stat(pid, comm or os.path.basename(argv[0]) if argv else "kthread", start_ticks))
 
-    def test_patterns_match_command_line(self):
+    def test_patterns_match_exe_and_script(self):
         self.add(100, ["/usr/bin/rsync", "-a", "/src/", "/dst/"], start_ticks=40000)   # 400 s от старта
         self.add(101, ["/bin/bash", "/opt/example-backup.sh", "--nightly"], start_ticks=90000,
                  comm="bash (x) y")          # скоби и интервали в името
@@ -147,6 +147,39 @@ class Tasks(unittest.TestCase):
             {"name": "backup", "pid": 101, "elapsed_s": 100},
             {"name": "rsync", "pid": 100, "elapsed_s": 600},
         ])
+
+    def test_agent_prompt_is_not_a_running_task(self):
+        # Случаят от GX10: процес на Claude Code, в чийто аргумент е текстът на задачата
+        # с думата „benchmark“, излизаше като „бенчмаркът върви 3,4 ч“.
+        self.add(200, ["node", "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js", "-p",
+                       "run the benchmark and report the results"], start_ticks=0)
+        self.add(201, ["claude", "--resume", "benchmark"], start_ticks=0)
+        self.add(202, ["/usr/bin/python3", "-u", "/opt/example/benchmark.py", "--runs", "5"],
+                 start_ticks=88000)
+        self.add(203, ["/usr/local/bin/benchmark", "--all"], start_ticks=99000)
+        default = ml.compile_process_rules([{"name": "benchmark", "pattern": r"^benchmark(\.py)?$"}])
+        found = ml.scan_processes(default, proc=self.proc, self_pid=0, clk_tck=100)
+        self.assertEqual([p["pid"] for p in found], [202, 203])
+
+        exe = ml.compile_process_rules([{"name": "b", "pattern": "^benchmark$", "match": "exe"}])
+        self.assertEqual([p["pid"] for p in ml.scan_processes(exe, proc=self.proc, self_pid=0)], [203])
+
+        # "cmdline" пази старото, широко поведение — и хваща агента
+        wide = ml.compile_process_rules([{"name": "b", "pattern": "benchmark", "match": "cmdline"}])
+        self.assertEqual([p["pid"] for p in ml.scan_processes(wide, proc=self.proc, self_pid=0)],
+                         [200, 201, 202, 203])
+
+    def test_match_targets(self):
+        self.assertEqual(ml.match_targets(["/bin/bash", "/opt/x/run-backup.sh", "--now"], "script"),
+                         ["bash", "run-backup.sh"])
+        self.assertEqual(ml.match_targets(["/usr/bin/rsync", "-a", "src/", "dst/"], "exe"), ["rsync"])
+        self.assertEqual(ml.match_targets(["claude", "-p", "бенчмарк сега"], "script"), ["claude"])
+        self.assertEqual(ml.match_targets(["claude", "benchmark"], "script"), ["claude"])
+        self.assertEqual(ml.match_targets(["a", "b c"], "cmdline"), ["a b c"])
+
+    def test_unknown_match_mode(self):
+        with self.assertRaisesRegex(ValueError, "argv"):
+            ml.compile_process_rules([{"name": "x", "pattern": "x", "match": "argv"}])
 
     def test_no_rules_no_scan(self):
         self.assertEqual(ml.scan_processes([], proc="/nonexistent"), [])
@@ -250,6 +283,17 @@ class ProcReaders(unittest.TestCase):
     def test_disk_missing_mount(self):
         [d] = ml.disk_usage(["/nonexistent/mount"])
         self.assertIn("error", d)
+
+    def test_disk_same_filesystem_shown_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            sub = os.path.join(d, "data")
+            os.makedirs(sub)
+            disks = ml.disk_usage([d, sub, "/nonexistent/mount", d])
+        self.assertEqual(len(disks), 2)
+        self.assertEqual(disks[0]["mount"], d)
+        self.assertEqual(disks[0]["mounts"], [d, sub])          # повторът се брои веднъж
+        self.assertIn("total", disks[0])
+        self.assertIn("error", disks[1])
 
 
 class Probe(unittest.TestCase):
