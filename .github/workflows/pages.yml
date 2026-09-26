@@ -95,7 +95,7 @@ jobs:
           DEST=../zhivo-nebe/_site/3d
           mkdir -p "$DEST/core" "$DEST/vendor"
           cp -r site/. "$DEST/"
-          cp core/venue-3d.js core/venue-data.js core/skeleton-geometry.js "$DEST/core/"
+          cp core/venue-3d.js core/venue-data.js core/skeleton-geometry.js core/sky.js "$DEST/core/"
           cp -r vendor/three "$DEST/vendor/"
           cp models/arena.example.glb "$DEST/model.glb"
           cp blender/skeleton.example.json "$DEST/skeleton.json"

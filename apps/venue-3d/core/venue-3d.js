@@ -6,6 +6,11 @@
 //
 // Зарежда model.glb; ако липсва — строи временен модел от skeleton.json (същата геометрия като Blender скрипта).
 // Визията е само през CSS custom properties (--v3d-*).
+//
+// По желание небе над сградата:  <venue-3d src="venue.json" forecast="forecast.json" event="0">
+// За часа на избрана проява от forecast.json (схема v2): сцената (ясно/облаци/дъжд/буря/жега/сняг, ден/нощ)
+// като небе и светлина, и истинското слънце по астрономия — със сенки в правилната посока спрямо north_deg.
+// Без атрибута forecast всичко е както преди.
 
 import * as THREE from '../vendor/three/build/three.module.js';
 import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
@@ -15,6 +20,7 @@ import {
   sortHotspots, resolveUrl, easeInOutCubic, bearingVector, explodeOffsets, formatElevation, fitDistance,
 } from './venue-data.js';
 import { buildParts } from './skeleton-geometry.js';
+import { pickMoment, eventChoices, forecastUsable, skyLook, sunVector } from './sky.js';
 
 const T = {
   bg: {
@@ -25,6 +31,10 @@ const T = {
     temp: 'Временен модел: model.glb липсва, сградата е построена от параметрите в skeleton.json.',
     broken: 'venue.json не може да се прочете.', noModel: 'Няма нито model.glb, нито skeleton.json за тази сграда.',
     elevation: 'кота', levelOf: 'Ниво',
+    event: 'Проява', scene: { clear: 'ясно', clouds: 'облачно', rain: 'дъжд', storm: 'буря', heat: 'жега', snow: 'сняг' },
+    noScene: 'няма прогноза за този час', night: 'нощ', twilight: 'здрач',
+    sunUp: (el, az, dir) => `слънце ${el}° над хоризонта, от ${dir} (${az}°)`, sunDown: 'слънцето е под хоризонта',
+    dirs: ['С', 'СИ', 'И', 'ЮИ', 'Ю', 'ЮЗ', 'З', 'СЗ'],
   },
   en: {
     kind: { entrance: 'Entrance', accessible_entrance: 'Step-free entrance', ticket_office: 'Box office', parking: 'Car park', transit_stop: 'Stop', info: 'Information' },
@@ -34,6 +44,10 @@ const T = {
     temp: 'Temporary model: model.glb is missing, the building is built from the numbers in skeleton.json.',
     broken: 'venue.json cannot be read.', noModel: 'There is neither a model.glb nor a skeleton.json for this building.',
     elevation: 'elevation', levelOf: 'Level',
+    event: 'Event', scene: { clear: 'clear', clouds: 'cloudy', rain: 'rain', storm: 'storm', heat: 'heat', snow: 'snow' },
+    noScene: 'no forecast for this hour', night: 'night', twilight: 'twilight',
+    sunUp: (el, az, dir) => `sun ${el}° above the horizon, from the ${dir} (${az}°)`, sunDown: 'the sun is below the horizon',
+    dirs: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
   },
 };
 // знак за вида точка — само текст, без изображения
@@ -100,6 +114,10 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   background: var(--_panel); color: inherit; border: 1px solid var(--_border);
 }
 .toolbar label { display: inline-flex; gap: 6px; align-items: center; }
+.sky {
+  font-size: .8rem; padding: 5px 10px; border-radius: 8px; background: var(--_panel); border: 1px solid var(--_border);
+  color: var(--_muted); max-width: 100%;
+}
 .toolbar [aria-pressed="true"] { background: var(--_accent); color: #fff; }
 .compass {
   position: absolute; right: 10px; top: 10px; width: 44px; height: 44px; border-radius: 50%;
@@ -139,9 +157,24 @@ nav small { color: var(--_muted); display: block; font-size: .78rem; }
 [hidden] { display: none !important; }
 `;
 
+/** Часовата зона от ISO времето на проявата ('+03:00' → 'Etc/GMT-3'), за да се покаже местният ѝ час. */
+function tzOf(iso) {
+  const m = /([+-])(\d{2}):?(\d{2})$/.exec(iso || '');
+  if (!m || m[3] !== '00') return undefined;                // нецели часове — часът на браузъра
+  const h = Number(m[2]);
+  return h === 0 ? 'UTC' : `Etc/GMT${m[1] === '+' ? '-' : '+'}${h}`;
+}
+
+function formatStart(iso, lang) {
+  const d = new Date(Date.parse(iso));
+  return d.toLocaleString(lang === 'en' ? 'en-GB' : 'bg-BG', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tzOf(iso),
+  });
+}
+
 function defineElement() {
   class Venue3D extends HTMLElement {
-    static get observedAttributes() { return ['src', 'lang']; }
+    static get observedAttributes() { return ['src', 'lang', 'forecast', 'event']; }
 
     constructor() {
       super();
@@ -156,6 +189,8 @@ function defineElement() {
               <button type="button" data-act="explode" aria-pressed="false"></button>
               <select data-act="level" aria-label=""></select>
               <label><input type="checkbox" data-act="open"> <span></span></label>
+              <select data-act="event" aria-label="" hidden></select>
+              <span class="sky" part="sky" role="status" hidden></span>
             </div>
             <div class="compass" part="compass" role="img"><span class="needle"></span><b></b></div>
             <div class="status" part="status" role="status" hidden></div>
@@ -186,7 +221,10 @@ function defineElement() {
 
     attributeChangedCallback(name, old, val) {
       if (!this.isConnected || old === val) return;
-      if (name === 'lang') this.renderTexts(); else this.load();
+      if (name === 'lang') this.renderTexts();
+      else if (name === 'forecast') this.loadForecast();
+      else if (name === 'event') { this.skyIndex = Number(val) || 0; this.applySky(); }
+      else this.load();
     }
 
     // ---------------------------------------------------------------- зареждане
@@ -225,6 +263,7 @@ function defineElement() {
       this.setModel(root);
       this.setStatus(this.source === 'skeleton' ? this.tx.temp : '');
       this.goHome(true);
+      this.loadForecast();
     }
 
     setStatus(text) {
@@ -244,13 +283,18 @@ function defineElement() {
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 4000);
-      this.scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7480, 1.6));
-      const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+      this.hemi = new THREE.HemisphereLight(0xffffff, 0x6b7480, 1.6);
+      this.scene.add(this.hemi);
+      const sun = this.sun = new THREE.DirectionalLight(0xffffff, 2.2);
       sun.position.set(120, 220, 90);
-      this.scene.add(sun);
+      this.scene.add(sun, sun.target);
+      // сенките се включват само с небето (атрибут forecast) — иначе картината е като досега
+      this.renderer.shadowMap.enabled = false;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       this.ground = new THREE.Mesh(new THREE.CircleGeometry(900, 72), new THREE.MeshStandardMaterial({ color: this.cssColor('--v3d-ground', '#dfe3e6') }));
       this.ground.rotation.x = -Math.PI / 2;
       this.ground.position.y = -0.03;
+      this.ground.receiveShadow = true;
       this.scene.add(this.ground);
 
       const cam = this.venue.camera;
@@ -366,6 +410,155 @@ function defineElement() {
       this.buildPins();
       this.renderTags();
       this.applyVisibility();
+      if (this.moment) this.applySky();
+    }
+
+    // ---------------------------------------------------------------- небе (по желание, от forecast.json)
+
+    async loadForecast() {
+      const src = this.getAttribute('forecast');
+      this.forecast = null;
+      if (src) {
+        try {
+          const f = await (await fetch(new URL(src, document.baseURI).href, { cache: 'no-cache' })).json();
+          if (forecastUsable(f)) this.forecast = f;
+          else console.warn('venue-3d: forecast.json не е по схема v2 или няма координати — небето се пропуска');
+        } catch (e) { console.warn('venue-3d: forecast.json не се зареди — небето се пропуска', e); }
+      }
+      this.skyIndex = Number(this.getAttribute('event')) || 0;
+      this.applySky();
+      this.renderTexts();
+    }
+
+    /** Небето, светлината, слънцето и сенките за избраната проява. Без прогноза — както досега. */
+    applySky() {
+      if (!this.renderer || !this.scene) return;
+      const m = this.forecast && this.model ? pickMoment(this.forecast, this.skyIndex) : null;
+      this.moment = m;
+      const stage = this.$('.stage');
+      if (!m) {
+        // връщане към обичайната картина
+        stage.style.background = '';
+        this.hemi.intensity = 1.6;
+        this.hemi.color.set(0xffffff);
+        this.sun.intensity = 2.2;
+        this.sun.color.set(0xffffff);
+        this.sun.position.set(120, 220, 90);
+        this.sun.target.position.set(0, 0, 0);
+        this.setShadows(false);
+        this.scene.fog = null;
+        this.setPrecip(null, 0);
+        this.lightning = false;
+        if (this.sunDisc) this.sunDisc.visible = false;
+        this.dirty = true;
+        return;
+      }
+      const look = skyLook(m.scene || 'clear', m.sun.elevation);
+      const center = this.bounds ? this.bounds.getCenter(new THREE.Vector3()) : new THREE.Vector3();
+      const radius = this.bounds ? this.bounds.getBoundingSphere(new THREE.Sphere()).radius : 60;
+      stage.style.background = `linear-gradient(180deg, ${look.skyTop}, ${look.skyBottom})`;
+      // мъглата в цвета на хоризонта: далечната земя преминава в небето — атмосферата се вижда и отгоре
+      this.scene.fog = new THREE.Fog(look.skyBottom, radius * (3 - look.haze * 2), radius * (11 - look.haze * 5));
+      this.hemi.intensity = look.hemiIntensity;
+      this.hemi.color.set(look.skyTop).lerp(new THREE.Color(0xffffff), 0.55);
+      this.baseHemi = look.hemiIntensity;
+      // слънцето: истинската посока за координатите и часа, завъртяна по north_deg на плана
+      const dir = new THREE.Vector3(...planToThree(sunVector(m.sun.azimuth, Math.max(m.sun.elevation, 0.5), this.venue.north_deg)));
+      this.sun.position.copy(center).addScaledVector(dir, radius * 4);
+      this.sun.target.position.copy(center);
+      this.sun.intensity = look.sunIntensity;
+      this.sun.color.set(look.sunColor);
+      const sc = this.sun.shadow.camera;
+      const span = radius * (m.sun.elevation < 15 ? 3 : 1.8);                // ниско слънце — дълги сенки
+      Object.assign(sc, { left: -span, right: span, top: span, bottom: -span, near: 1, far: radius * 9 });
+      sc.updateProjectionMatrix();
+      this.sun.shadow.mapSize.set(2048, 2048);
+      this.sun.shadow.bias = -0.0005;
+      this.sun.shadow.normalBias = radius * 0.004;                          // без ивици по покрива при ниско слънце
+      this.setShadows(look.sunIntensity > 0.05);
+      // видимият диск на слънцето, когато е над хоризонта
+      if (!this.sunDisc) {
+        this.sunDisc = new THREE.Mesh(new THREE.SphereGeometry(14, 24, 16), new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false }));
+        this.scene.add(this.sunDisc);
+      }
+      this.sunDisc.visible = m.sun.elevation > -1 && look.sunIntensity > 0.2;
+      this.sunDisc.material.color.set(look.sunColor);
+      this.sunDisc.position.copy(center).addScaledVector(
+        new THREE.Vector3(...planToThree(sunVector(m.sun.azimuth, m.sun.elevation, this.venue.north_deg))), 1100);
+      this.setPrecip(look.precip, look.precipAmount, center);
+      this.lightning = look.lightning && !this.reduced;
+      this.dirty = true;
+    }
+
+    setShadows(on) {
+      this.renderer.shadowMap.enabled = on;
+      this.sun.castShadow = on;
+      this.model?.traverse((o) => { if (o.isMesh) { o.castShadow = on; o.receiveShadow = on; } });
+      // материалите трябва да се прекомпилират, когато сенките се сменят
+      this.scene.traverse((o) => { if (o.isMesh) for (const mat of [].concat(o.material)) mat.needsUpdate = true; });
+    }
+
+    /** Дъжд (черти) или сняг (точки) в кутия около сградата; без анимация при prefers-reduced-motion. */
+    setPrecip(kind, amount, center = new THREE.Vector3()) {
+      if (this.precip) { this.scene.remove(this.precip); this.precip.geometry.dispose(); this.precip.material.dispose(); }
+      this.precip = null;
+      if (!kind) return;
+      const n = Math.round(1800 * amount), R = 170, H = 140;
+      const pos = new Float32Array(n * (kind === 'rain' ? 6 : 3));
+      const rnd = (a) => (Math.random() * 2 - 1) * a;
+      for (let i = 0; i < n; i++) {
+        const x = center.x + rnd(R), y = Math.random() * H, z = center.z + rnd(R);
+        if (kind === 'rain') pos.set([x, y, z, x + 0.25, y - 2.4, z], i * 6); else pos.set([x, y, z], i * 3);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.precip = kind === 'rain'
+        ? new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xaab8c8, transparent: true, opacity: 0.55 }))
+        : new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.7, transparent: true, opacity: 0.9 }));
+      this.precip.userData = { kind, H, speed: kind === 'rain' ? 60 : 6 };
+      this.scene.add(this.precip);
+    }
+
+    /** Една стъпка на времето: падащ валеж и светкавици. → нужно ли е ново рисуване. */
+    stepWeather(now) {
+      const last = this.lastWeather ?? now;
+      this.lastWeather = now;
+      if (this.reduced || !this.moment) return false;
+      let changed = false;
+      const dt = Math.min(0.1, (now - last) / 1000);
+      if (this.precip) {
+        const { kind, H, speed } = this.precip.userData;
+        const a = this.precip.geometry.attributes.position;
+        const stride = kind === 'rain' ? 2 : 1;
+        for (let i = 0; i < a.count; i += stride) {
+          let y = a.getY(i) - speed * dt;
+          if (y < 0) y += H;
+          a.setY(i, y);
+          if (stride === 2) a.setY(i + 1, y - 2.4);
+          else a.setX(i, a.getX(i) + Math.sin(now / 900 + i) * 0.02);    // снегът се люлее
+        }
+        a.needsUpdate = true;
+        changed = true;
+      }
+      if (this.lightning) {
+        if (!this.nextFlash || now > this.nextFlash + 140) this.nextFlash = now + 3500 + Math.random() * 6000;
+        const flash = now > this.nextFlash && now < this.nextFlash + 140;
+        this.hemi.intensity = flash ? 4 : this.baseHemi;
+        changed = true;
+      }
+      return changed;
+    }
+
+    skyText() {
+      const m = this.moment, tx = this.tx;
+      if (!m) return '';
+      const lang = this.lang_;
+      const time = m.date.toLocaleTimeString(lang === 'en' ? 'en-GB' : 'bg-BG', { hour: '2-digit', minute: '2-digit', timeZone: tzOf(m.event.start) });
+      const scene = m.scene ? tx.scene[m.scene] : tx.noScene;
+      const part = m.light === 'day' ? '' : ` · ${tx[m.light]}`;
+      const el = Math.round(m.sun.elevation), az = Math.round(m.sun.azimuth);
+      const sun = m.sun.elevation > 0 ? tx.sunUp(el, az, tx.dirs[Math.round(az / 45) % 8]) : tx.sunDown;
+      return `${time} · ${scene}${part} · ${sun}`;
     }
 
     // ---------------------------------------------------------------- кадър
@@ -382,6 +575,7 @@ function defineElement() {
         changed = true;
       }
       if (this.controls?.update()) changed = true;
+      if (this.stepWeather(now)) changed = true;
       if (!changed || !this.model) return;
       this.renderer.render(this.scene, this.camera);
       this.updateOverlay();
@@ -676,6 +870,7 @@ function defineElement() {
         if (this.state.exploded) this.setExploded(false); else this.goHome();
       });
       q('explode').addEventListener('click', () => this.setExploded(!this.state.exploded));
+      q('event').addEventListener('change', (e) => { this.skyIndex = Number(e.target.value) || 0; this.applySky(); this.renderTexts(); });
       q('level').addEventListener('change', (e) => { this.state.level = e.target.value; this.applyVisibility(); this.renderTexts(); });
       q('open').addEventListener('change', (e) => {
         if (this.state.exploded) this.setExploded(false);
@@ -707,6 +902,14 @@ function defineElement() {
       q('open').checked = s.open && !s.exploded;
       q('open').parentElement.hidden = !this.venue.levels.length || s.exploded;
       q('open').nextElementSibling.textContent = tx.open;
+      const choices = this.forecast ? eventChoices(this.forecast, lang) : [];
+      const ev = q('event');
+      ev.hidden = !choices.length;
+      ev.setAttribute('aria-label', tx.event);
+      ev.innerHTML = choices.map((c) => `<option value="${c.index}"${c.index === (this.skyIndex || 0) ? ' selected' : ''}>${esc(c.title)} · ${esc(formatStart(c.start, lang))}</option>`).join('');
+      const sky = this.$('.sky');
+      sky.textContent = this.skyText();
+      sky.hidden = !sky.textContent;
       const compass = this.$('.compass');
       compass.setAttribute('aria-label', tx.northLabel);
       compass.querySelector('b').textContent = tx.north;
