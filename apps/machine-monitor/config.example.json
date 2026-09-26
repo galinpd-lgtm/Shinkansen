@@ -1,0 +1,50 @@
+{
+  "_comment": "Пример с измислени имена и адреси (192.0.2.0/24 е за документация). Копирай извън репото и попълни своите.",
+  "monitor": {
+    "name": "example-server",
+    "listen": "127.0.0.1",
+    "port": 8190,
+    "sample_seconds": 10,
+    "history_minutes": 30,
+    "mounts": ["/", "/srv/example-data"],
+    "systemd": true,
+    "tasks": {
+      "processes": [
+        {"name": "rsync", "pattern": "^rsync$", "match": "exe"},
+        {"name": "nightly backup", "pattern": "^example-backup\\.sh$", "match": "script"},
+        {"name": "benchmark", "pattern": "^example-bench\\.py$"}
+      ],
+      "logs": [
+        {
+          "name": "nightly backup",
+          "path": "/var/log/example-backup.log",
+          "success": "backup finished OK"
+        },
+        {
+          "name": "weekly archive",
+          "path": "/var/log/example-archive.log",
+          "success": "archive complete",
+          "time_regex": "^(\\w{3} +\\d+ \\d{2}:\\d{2}:\\d{2})",
+          "time_format": "%b %d %H:%M:%S"
+        }
+      ]
+    }
+  },
+  "probe": {
+    "name": "example-nas",
+    "host": "192.0.2.20",
+    "listen": "127.0.0.1",
+    "port": 8191,
+    "sample_seconds": 30,
+    "history_minutes": 30,
+    "ports": [445],
+    "ping": true,
+    "timeout_seconds": 2,
+    "writer": {
+      "name": "example-server",
+      "url": "http://192.0.2.10:8190/api/now",
+      "processes": ["rsync", "nightly backup"],
+      "logs": ["nightly backup"]
+    }
+  }
+}

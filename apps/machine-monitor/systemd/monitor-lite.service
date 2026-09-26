@@ -1,0 +1,26 @@
+# Пример: monitor_lite.py като потребителска услуга (без root).
+#
+#   mkdir -p ~/.config/systemd/user ~/.config/machine-monitor
+#   cp config.example.json ~/.config/machine-monitor/config.json   # и попълни своите стойности
+#   cp systemd/monitor-lite.service ~/.config/systemd/user/
+#   # поправи пътя в ExecStart към мястото на репото
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now monitor-lite.service
+#   loginctl enable-linger "$USER"      # по желание: да върви и без влязъл потребител
+#
+# За пробата копирай файла като probe-device.service и смени ExecStart на probe_device.py.
+[Unit]
+Description=monitor-lite (read-only machine monitor)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/Shinkansen/apps/machine-monitor/monitor_lite.py %h/.config/machine-monitor/config.json
+Restart=on-failure
+RestartSec=10
+# Услугата само чете. В потребителска услуга по-силните ограничения (ProtectSystem и др.)
+# зависят от ядрото и версията на systemd — оставяме само сигурното.
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
