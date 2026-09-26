@@ -149,7 +149,7 @@ class Tasks(unittest.TestCase):
         ])
 
     def test_agent_prompt_is_not_a_running_task(self):
-        # Случаят от GX10: процес на Claude Code, в чийто аргумент е текстът на задачата
+        # Случай от изпитването на живо: процес на Claude Code, в чийто аргумент е текстът на задачата
         # с думата „benchmark“, излизаше като „бенчмаркът върви 3,4 ч“.
         self.add(200, ["node", "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js", "-p",
                        "run the benchmark and report the results"], start_ticks=0)
