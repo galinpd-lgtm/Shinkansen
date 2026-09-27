@@ -1,0 +1,7 @@
+# частните файлове живеят само на GX10 (само в корена на приложението — tests/fixtures/ се пазят)
+/config.json
+/izvori.json
+/organizacii.json
+/danni/
+/izhod/
+/vhod/

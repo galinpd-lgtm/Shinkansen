@@ -1,0 +1,10 @@
+[Unit]
+Description=Филтър: събиране на всеки 15 минути
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

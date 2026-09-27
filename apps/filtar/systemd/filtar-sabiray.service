@@ -1,0 +1,15 @@
+# Събирачът — без модел. Пише в базата само новото; при нищо ново нищо не се променя.
+# Инсталиране (потребителска услуга, без root):
+#   cp apps/filtar/systemd/filtar-* ~/.config/systemd/user/ && systemctl --user daemon-reload
+#   systemctl --user enable --now filtar-sabiray.timer filtar-sutrin.timer
+[Unit]
+Description=Филтър: събиране от източниците
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Shinkansen/apps/filtar
+Environment=FILTAR_CONFIG=%h/.config/filtar/config.json
+Environment=SHINKANSEN_RUNS=%h/.local/state/shinkansen/runs
+ExecStart=/usr/bin/python3 -m filtar sabiray
+# 4 = част от източниците не отговориха (другите са събрани) — не е повреда на услугата
+SuccessExitStatus=4

@@ -1,0 +1,13 @@
+# Сутрешният ход: филтриране (с модела през вратата на Z7) и чернова за днес.
+# Изход 4 = машината е заета/гореща: нищо не се губи, следващото пускане продължава.
+[Unit]
+Description=Филтър: филтриране и чернова на радара
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Shinkansen/apps/filtar
+Environment=FILTAR_CONFIG=%h/.config/filtar/config.json
+Environment=SHINKANSEN_RUNS=%h/.local/state/shinkansen/runs
+ExecStart=/usr/bin/python3 -m filtar filtriray
+ExecStart=/bin/sh -c 'exec /usr/bin/python3 -m filtar chernova --data "$(date +%%F)"'
+SuccessExitStatus=4
