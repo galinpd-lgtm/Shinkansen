@@ -185,18 +185,18 @@ class DemoImport(unittest.TestCase):
         with open(res, "w", encoding="utf-8") as f:
             json.dump({"results": [
                 {"topic": 1, "status": "ok", "seconds": 5.7, "date": "2026-09-27", "max_temp_c": 60,
-                 "note": "стартирано от gal@gx10 в /home/gal/ai_start_demo/t01.sh на 192.168.1.20:11435, PID 4242"},
+                 "note": "стартирано от demo@lab-box в /home/user/ai_start_demo/t01.sh на 192.0.2.10:11435, PID 4242"},
                 {"topic": 3, "status": "fail", "seconds": 211},          # тема 3 е без демо → прескача се
                 {"topic": 9, "status": "ok"}]}, f)                       # няма тема 9
         words = os.path.join(d, "words.txt")
         with open(words, "w") as f:
-            f.write("# машини\nGX10\n")
+            f.write("# машини\nlab-box\n")
         diff, log = ops.demo_import(d, res, words)
         with open(os.path.join(d, "event.json"), encoding="utf-8") as f:
             ev = json.load(f)
         r = ev["topics"][0]["demo"]["results"]
         self.assertEqual((r["status"], r["seconds"], r["max_temp_c"]), ("ok", 5.7, 60))
-        for leak in ("gal", "gx10", "GX10", "/home", "192.168", "11435", "4242"):
+        for leak in ("demo@", "lab-box", "/home", "192.0.2", "11435", "4242"):
             self.assertNotIn(leak, r["note"])
         self.assertNotIn("results", json.dumps(ev["topics"][2]))
         self.assertIn("прескочени: 3, 9", log[-1])
