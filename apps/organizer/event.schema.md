@@ -11,7 +11,7 @@
 | `theme` | `accent`, `ink`, `paper` (`#rrggbb`); `font_display`, `font_body` (имена на шрифтове); `fonts_css` — само `https://fonts.googleapis.com/…` или `null` |
 | `dates.from` ✱ · `dates.to` ✱ · `dates.label` | ГГГГ-ММ-ДД; `label` е как да се изпише („9–11 октомври 2026“) |
 | `place` | `name`, `seats`, `note` |
-| `publish` | `indexable` (false докато не е „go“), `base_url` (за canonical и sitemap) |
+| `publish` | `indexable` (false докато не е „go“), `base_url` (за canonical и sitemap), `forbid_text` — стари дати и имена, които не бива да останат: ако се срещнат в сглобеното, `build` спира и казва къде |
 | `cta` | `label` и `form` — id на въпросника, към който води бутонът |
 | `home.why` | карти `{title, text}` за „Защо така“ |
 | `lab_roles` | `{id, label, text}` — колоните на лабораторията и картите „За кого“ |

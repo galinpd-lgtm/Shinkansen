@@ -19,7 +19,7 @@
   },
   "dates": {"from": "2030-05-17", "to": "2030-05-19", "label": "17–19 май 2030"},
   "place": {"name": "Офисът на организатора", "seats": "8–10 работни места", "note": "Точният адрес се изпраща на записаните."},
-  "publish": {"indexable": false, "base_url": null},
+  "publish": {"indexable": false, "base_url": null, "forbid_text": ["10–12 май 2030"]},
   "cta": {"label": "Запиши се", "form": "zapis"},
 
   "home": {

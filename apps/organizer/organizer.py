@@ -202,6 +202,10 @@ def check(event, people):
         if not people.get(kind):
             todo.append("%s: няма нито един — показват се празни профили" % label)
 
+    forbid = event.get("publish", {}).get("forbid_text", [])
+    if not isinstance(forbid, list) or not all(isinstance(x, str) and x.strip() for x in forbid):
+        err.append("publish.forbid_text: списък от непразни низове")
+
     if not event.get("publish", {}).get("indexable"):
         todo.append("публикуване: скрито от търсачките (publish.indexable = false, чака „go“)")
     elif not event.get("publish", {}).get("base_url"):
@@ -558,7 +562,22 @@ def build(folder, out, demo=False):
         pages = [p for p in written if p.endswith(".html")]
         write("sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n%s</urlset>\n'
               % "".join("  <url><loc>%s</loc></url>\n" % esc(base.rstrip("/") + "/" + ("" if p == "index.html" else p)) for p in pages))
+    hits = forbidden_hits(out, written, event.get("publish", {}).get("forbid_text", []))
+    if hits:
+        raise ValueError("\n".join("забранен текст „%s“ в %s" % (t, rel) for rel, t in hits))
     return written, todo
+
+
+def forbidden_hits(out, written, forbid):
+    """Стари дати и имена, които не бива да останат никъде в сглобеното (publish.forbid_text)."""
+    hits = []
+    for rel in written:
+        with open(os.path.join(out, rel), encoding="utf-8") as f:
+            text = f.read()
+        for t in forbid:
+            if t in text or html.escape(t) in text:
+                hits.append((rel, t))
+    return hits
 
 
 def cmd_new(dest):
@@ -608,7 +627,11 @@ def main(argv=None):
     if errors:
         report(errors, [])
         return 1
-    written, todo = build(args.folder, args.out, demo=args.demo)
+    try:
+        written, todo = build(args.folder, args.out, demo=args.demo)
+    except ValueError as e:
+        report(str(e).splitlines(), [])
+        return 1
     print("%d файла в %s%s" % (len(written), args.out, " (демо)" if args.demo else ""))
     report([], todo)
     return 0

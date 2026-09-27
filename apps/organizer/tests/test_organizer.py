@@ -162,6 +162,16 @@ class Build(unittest.TestCase):
             text = self.read(rel)
             self.assertNotRegex(text, r"(?i)password\s*=|'pass'\s*=>\s*'[^'П]", rel)
 
+    def test_forbidden_text_stops_build(self):
+        event = copy.deepcopy(self.event)
+        event["topics"][1]["summary"] = "Старата дата 10–12 май 2030 е останала тук."
+        with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as out:
+            write_event(src, event)
+            with self.assertRaises(ValueError) as cm:
+                organizer.build(src, out)
+            self.assertIn("tema-02.html", str(cm.exception))
+            self.assertEqual(organizer.main(["build", src, out]), 1)
+
     def test_demo_has_no_php(self):
         with tempfile.TemporaryDirectory() as out:
             written, _ = organizer.build(EXAMPLE, out, demo=True)
