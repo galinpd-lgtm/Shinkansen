@@ -530,21 +530,28 @@ def fill(folder, dry_run=False, now=None):
                                           src["target"], src.get("mode", "set")))
     d = key_diff(before, event)
     if not dry_run and any(d.values()):
-        stamp = (now or datetime.now()).strftime("%Y-%m-%d")
-        backup, n = ev_path + ".orig_" + stamp, 1
-        while os.path.exists(backup):
-            n += 1
-            backup = "%s.orig_%s-%d" % (ev_path, stamp, n)
-        shutil.copyfile(ev_path, backup)
-        with open(ev_path, "w", encoding="utf-8") as f:
-            json.dump(event, f, ensure_ascii=False, indent=2)
-            f.write("\n")
-        with open(os.path.join(folder, "decisions.md"), "a", encoding="utf-8") as f:
-            f.write("\n## %s · fill\n\n" % (now or datetime.now()).strftime("%Y-%m-%d %H:%M"))
-            f.write("".join("- %s\n" % x for x in log))
-            f.write("- промени: %d нови, %d сменени, %d махнати ключа; старото: %s\n" % (
-                len(d["added"]), len(d["changed"]), len(d["removed"]), os.path.basename(backup)))
+        save_event(folder, event, "fill", log, d, now)
     return d, log
+
+
+def save_event(folder, event, what, log, d, now=None):
+    """Записва event.json: старото → event.json.orig_ДАТА[-N] (нищо не се презаписва) + ред в decisions.md."""
+    ev_path = os.path.join(folder, "event.json")
+    stamp = (now or datetime.now()).strftime("%Y-%m-%d")
+    backup, n = ev_path + ".orig_" + stamp, 1
+    while os.path.exists(backup):
+        n += 1
+        backup = "%s.orig_%s-%d" % (ev_path, stamp, n)
+    shutil.copyfile(ev_path, backup)
+    with open(ev_path, "w", encoding="utf-8") as f:
+        json.dump(event, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    with open(os.path.join(folder, "decisions.md"), "a", encoding="utf-8") as f:
+        f.write("\n## %s · %s\n\n" % ((now or datetime.now()).strftime("%Y-%m-%d %H:%M"), what))
+        f.write("".join("- %s\n" % x for x in log))
+        f.write("- промени: %d нови, %d сменени, %d махнати ключа; старото: %s\n" % (
+            len(d["added"]), len(d["changed"]), len(d["removed"]), os.path.basename(backup)))
+    return backup
 
 
 def check_sources(folder, event):
@@ -565,3 +572,142 @@ def check_sources(folder, event):
         except (ValueError, KeyError) as e:
             err.append("%s: %s" % (where, e))
     return err
+
+
+# ---------- demo-import: резултатите от пробата на демата ----------
+
+STATUS = {"ok": "ok", "pass": "ok", "passed": "ok", "минало": "ok", "fail": "fail", "failed": "fail",
+          "error": "fail", "skip": "skip", "skipped": "skip"}
+LINE_RE = _re.compile(r"\bt(?:ema)?[ _-]?0*(\d{1,2})\b[^A-Za-zА-Яа-я0-9]{0,6}(OK|PASS(?:ED)?|FAIL(?:ED)?|ERROR|SKIP(?:PED)?)\b"
+                      r"(?:.*?\b(\d+(?:[.,]\d+)?)\s*(?:s|sec|сек)\b)?(?:.*?\b(\d{2,3}(?:[.,]\d)?)\s*°?C\b)?", _re.I)
+REDACT = [
+    (_re.compile(r"\b[\w.-]+@[\w.-]+\b"), "…"),                                  # потребител@машина, имейл
+    (_re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b"), "…"),                    # IPv4 и порт
+    (_re.compile(r"\b(?:localhost|127\.0\.0\.1)(?::\d+)?\b", _re.I), "…"),
+    (_re.compile(r"(?<![\w/]):\d{2,5}\b"), ""),                                    # самостоятелен порт :11435
+    (_re.compile(r"(?:~|/(?:home|root|opt|mnt|srv|var|tmp|Users))/[^\s,;)“”\"']+"), "…"),   # пътища
+    (_re.compile(r"\b[A-Za-z]:\\[^\s,;)“”\"']+"), "…"),                              # C:\…
+    (_re.compile(r"\b(?:PID|pid)[ =:#]*\d+\b"), ""),
+    (_re.compile(r"https?://[^\s)“”\"']+"), "…"),
+]
+
+
+def redact(text, words=()):
+    for rx, rep in REDACT:
+        text = rx.sub(rep, text)
+    for w in words:
+        if w:
+            text = _re.sub(_re.escape(w), "…", text, flags=_re.I)
+    return _re.sub(r"\s{2,}", " ", text).strip()
+
+
+def parse_results(path):
+    """Договорът: JSON [{topic, status, seconds?, date?, max_temp_c?, note?}] (или {"results": […]}).
+    Иначе — лог с редове като „t03 OK 75.2 s … 66 °C“. Връща {n: {…}}."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    out = {}
+    try:
+        data = json.loads(text)
+        items = data.get("results", data) if isinstance(data, dict) else data
+        for it in items:
+            st = STATUS.get(str(it.get("status", "")).lower())
+            if st and int(it["topic"]) > 0:
+                out[int(it["topic"])] = {k: it[k] for k in ("seconds", "date", "max_temp_c", "note") if it.get(k) is not None}
+                out[int(it["topic"])]["status"] = st
+        return out
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    for line in text.splitlines():
+        m = LINE_RE.search(line)
+        if not m:
+            continue
+        r = {"status": STATUS[m.group(2).lower()]}
+        if m.group(3):
+            r["seconds"] = float(m.group(3).replace(",", "."))
+        if m.group(4):
+            r["max_temp_c"] = float(m.group(4).replace(",", "."))
+        out[int(m.group(1))] = r
+    return out
+
+
+def demo_import(folder, results_path, words_path=None, when=None, dry_run=False, now=None):
+    """Слага topics[n].demo.results = {status, seconds, date, max_temp_c, note} по номер на тема; бележките минават
+    през филтъра. Теми без демо (demo: false) и непознати номера се прескачат. Връща (разлика, дневник)."""
+    words = []
+    if words_path:
+        with open(os.path.expanduser(words_path), encoding="utf-8") as f:
+            words = [w.strip() for w in f if w.strip() and not w.startswith("#")]
+    res = parse_results(results_path)
+    with open(os.path.join(folder, "event.json"), encoding="utf-8") as f:
+        event = json.load(f)
+    before = json.loads(json.dumps(event))
+    by_n = {t.get("n"): t for t in event.get("topics", [])}
+    log, skipped = [], []
+    for n, r in sorted(res.items()):
+        t = by_n.get(n)
+        if not t or t.get("demo") is False:
+            skipped.append(n)
+            continue
+        r = dict(r)
+        if r.get("note"):
+            r["note"] = redact(str(r["note"]), words)
+        r.setdefault("date", (when or (now or datetime.now()).date().isoformat()))
+        if not isinstance(t.get("demo"), dict):
+            t["demo"] = {"title": "Демо на живо", "steps": []}
+        t["demo"]["results"] = r
+        log.append("тема %d: %s%s" % (n, r["status"], " · %.1f s" % r["seconds"] if "seconds" in r else ""))
+    if skipped:
+        log.append("прескочени: %s (няма такава тема или е без демо)" % ", ".join(map(str, skipped)))
+    d = key_diff(before, event)
+    if not dry_run and any(d.values()):
+        save_event(folder, event, "demo-import · %s" % os.path.basename(results_path), log, d, now)
+    return d, log
+
+
+# ---------- feedback: обобщение на отговорите ----------
+
+def _fetch_csv(url):
+    user, pw = os.environ.get("ORGANIZER_ADMIN_USER"), os.environ.get("ORGANIZER_ADMIN_PASS")
+    if not (user and pw):
+        raise ValueError("за --url трябват ORGANIZER_ADMIN_USER и ORGANIZER_ADMIN_PASS (паролата на admin/)")
+    import base64
+    req = urllib.request.Request(url, headers={"Authorization": "Basic " + base64.b64encode(
+        ("%s:%s" % (user, pw)).encode()).decode()})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.read().decode("utf-8-sig")
+
+
+def feedback(csv_text, form):
+    """Обобщение в Markdown по спецификацията на въпросника (api/forms.json → forms[id]).
+    Личните полета (personal) не влизат — нито имена, нито имейли, нито броят им по човек."""
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    if not rows:
+        return "# %s\n\nНяма отговори.\n" % form["title"]
+    head, data = rows[0], rows[1:]
+    col = {h: i for i, h in enumerate(head)}
+    lines = ["# Обратна връзка · %s" % form["title"], "", "**%d отговора**" % len(data)]
+    if data:
+        dates = sorted(r[1][:10] for r in data if len(r) > 1 and r[1])
+        if dates:
+            lines[-1] += " · от %s до %s" % (dates[0], dates[-1])
+    for f in form["fields"]:
+        if f.get("personal") or f["label"] not in col:
+            continue
+        vals = [r[col[f["label"]]].strip() for r in data if len(r) > col[f["label"]]]
+        vals = [v[1:] if v.startswith("'") and v[1:2] in "=+-@" else v for v in vals]     # обезвредените клетки
+        filled = [v for v in vals if v]
+        lines += ["", "## %s" % f["label"], ""]
+        if not filled:
+            lines.append("_няма отговори_")
+            continue
+        if f["type"] in ("single", "multi"):
+            counts = {}
+            for v in filled:
+                for item in (v.split("; ") if f["type"] == "multi" else [v]):
+                    counts[item] = counts.get(item, 0) + 1
+            order = [o for o in f.get("options", []) if o in counts] + sorted(k for k in counts if k not in f.get("options", []))
+            lines += ["| Отговор | Брой |", "|---|---|"] + ["| %s | %d |" % (k.replace("|", "\\|"), counts[k]) for k in order]
+        else:
+            lines += ["- " + v.replace("\n", " ") for v in filled]
+    return "\n".join(lines) + "\n"

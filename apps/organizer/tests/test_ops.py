@@ -3,6 +3,8 @@
     cd apps/organizer && python3 -m unittest discover -s tests -v
 """
 import copy
+import csv
+import io
 import json
 import os
 import shutil
@@ -168,3 +170,70 @@ class Fill(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DemoImport(unittest.TestCase):
+    def copy(self):
+        d = tempfile.mkdtemp()
+        shutil.copytree(EXAMPLE, d, dirs_exist_ok=True)
+        self.addCleanup(shutil.rmtree, d)
+        return d
+
+    def test_json_contract_and_redaction(self):
+        d = self.copy()
+        res = os.path.join(d, "res.json")
+        with open(res, "w", encoding="utf-8") as f:
+            json.dump({"results": [
+                {"topic": 1, "status": "ok", "seconds": 5.7, "date": "2026-09-27", "max_temp_c": 60,
+                 "note": "стартирано от gal@gx10 в /home/gal/ai_start_demo/t01.sh на 192.168.1.20:11435, PID 4242"},
+                {"topic": 3, "status": "fail", "seconds": 211},          # тема 3 е без демо → прескача се
+                {"topic": 9, "status": "ok"}]}, f)                       # няма тема 9
+        words = os.path.join(d, "words.txt")
+        with open(words, "w") as f:
+            f.write("# машини\nGX10\n")
+        diff, log = ops.demo_import(d, res, words)
+        with open(os.path.join(d, "event.json"), encoding="utf-8") as f:
+            ev = json.load(f)
+        r = ev["topics"][0]["demo"]["results"]
+        self.assertEqual((r["status"], r["seconds"], r["max_temp_c"]), ("ok", 5.7, 60))
+        for leak in ("gal", "gx10", "GX10", "/home", "192.168", "11435", "4242"):
+            self.assertNotIn(leak, r["note"])
+        self.assertNotIn("results", json.dumps(ev["topics"][2]))
+        self.assertIn("прескочени: 3, 9", log[-1])
+        with tempfile.TemporaryDirectory() as out:
+            organizer.build(d, out)
+            with open(os.path.join(out, "tema-01-parvi-razgovor.html"), encoding="utf-8") as f:
+                self.assertIn('class="probe probe-ok">Проба на 27 септември 2026: минала · 5,7 s · до 60 °C', f.read())
+
+    def test_log_lines(self):
+        d = self.copy()
+        log = os.path.join(d, "check_all_last_run.log")
+        with open(log, "w", encoding="utf-8") as f:
+            f.write("[09:12] t01 OK 5.7s max 60°C\n[09:20] tema-02: FAIL after 12,5 s\nшум без тема\n")
+        res = ops.parse_results(log)
+        self.assertEqual(res[1], {"status": "ok", "seconds": 5.7, "max_temp_c": 60.0})
+        self.assertEqual(res[2], {"status": "fail", "seconds": 12.5})
+        self.assertEqual(sorted(res), [1, 2])
+
+    def test_minutes(self):
+        self.assertIn("3:31 мин", organizer.demo_results({"status": "ok", "seconds": 211}))
+
+
+class Feedback(unittest.TestCase):
+    def test_summary_skips_personal(self):
+        spec = organizer.forms_spec(organizer.load(EXAMPLE)[0])
+        form = spec["forms"]["zapis"]
+        head = ["№", "Кога (UTC)"] + [f["label"] for f in form["fields"]]
+        rows = [head,
+                ["1", "2026-09-28 10:00:00", "Инженер", "Никакъв", "1. Първи разговор; 2. Памет", "'=да мога", "", "", "",
+                 "Ива", "iva@example.org", "да"],
+                ["2", "2026-09-29 11:00:00", "Друго: Архитект", "Пробвал съм", "2. Памет", "", "", "", "", "", "", ""]]
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        out = ops.feedback(buf.getvalue(), form)
+        self.assertIn("**2 отговора** · от 2026-09-28 до 2026-09-29", out)
+        self.assertIn("| 2. Памет | 2 |", out)
+        self.assertIn("| Друго: Архитект | 1 |", out)
+        self.assertIn("- =да мога", out)                     # обезвредената клетка се връща за четене
+        for leak in ("Ива", "iva@example.org"):
+            self.assertNotIn(leak, out)

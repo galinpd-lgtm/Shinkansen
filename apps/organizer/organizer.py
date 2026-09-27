@@ -7,6 +7,8 @@
     python3 organizer.py fill ПАПКА [--dry-run]                 # съдържание от sources (Markdown + JSON блокове)
     python3 organizer.py package САЙТ ПАПКА [--prev ПРЕДИШЕН]   # за качване: tgz, SHA-256, разлика
     python3 organizer.py qa ПАПКА ОТЧЕТ [--no-shots]            # A5 с една команда
+    python3 organizer.py demo-import ПАПКА РЕЗУЛТАТИ [--words …]  # пробата на демата → страниците
+    python3 organizer.py feedback CSV --spec САЙТ/api/forms.json   # обобщение на отговорите
     python3 organizer.py deploy ПАКЕТ.tgz --config deploy.json [--go]   # A6; без --go само план
 
 ПАПКА съдържа event.json, data/ (лектори и партньори — по един запис на човек) и по желание
@@ -487,6 +489,24 @@ def images_grid(imgs):
             '<figcaption>%s</figcaption>' % md(i["caption"]) if i.get("caption") else "") for i in imgs)
 
 
+def demo_results(r):
+    """Ред под демото от organizer.py demo-import: „Проба на 27 септември 2026: минала · 75 s · до 66 °C“."""
+    if not isinstance(r, dict) or r.get("status") not in ("ok", "fail", "skip"):
+        return ""
+    bits = [{"ok": "минала", "fail": "не мина", "skip": "пропусната"}[r["status"]]]
+    if isinstance(r.get("seconds"), (int, float)):
+        sec = r["seconds"]
+        bits.append("%d:%02d мин" % (sec // 60, round(sec % 60)) if sec >= 60 else "%s s" % ("%.1f" % sec).replace(".", ","))
+    if isinstance(r.get("max_temp_c"), (int, float)):
+        bits.append("до %d °C" % round(r["max_temp_c"]))
+    try:
+        when = "Проба на %s: " % human_date(r["date"])
+    except (KeyError, TypeError, ValueError):
+        when = "Проба: "
+    note = " — %s" % md(r["note"]) if r.get("note") else ""
+    return '<p class="probe probe-%s">%s%s%s</p>' % (r["status"], esc(when), esc(" · ".join(bits)), note)
+
+
 def section(s, cls=""):
     """Раздел: заглавие, увод, карти, таблица, списък, кадри — в този ред, каквото има."""
     parts = ['<h2>%s</h2>' % esc(s["title"])]
@@ -583,8 +603,8 @@ def topic(event, t, demo):
         dm = t["demo"]
         parts.append(block('<h2>%s</h2>\n%s<ol class="steps">%s</ol>' % (
             esc(dm.get("title", "Демо на живо")), '<p class="lead">%s</p>' % md(dm["intro"]) if dm.get("intro") else "",
-            "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))) + images_grid(dm.get("images")),
-            "demo", "Демо на живо"))
+            "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))) + images_grid(dm.get("images"))
+            + demo_results(dm.get("results")), "demo", "Демо на живо"))
     roles = event.get("lab_roles", [])
     if roles and t.get("lab") is not False:
         cols = "".join('<article class="lab-col"><h3>%s</h3><ul>%s</ul></article>' % (
@@ -987,6 +1007,18 @@ def main(argv=None):
     dp.add_argument("--go", action="store_true", help="наистина качва (след „go“ от човек)")
     dp.add_argument("--htaccess-ok", action="store_true", help="правилата в .htaccess на public_html са прочетени")
     dp.add_argument("--no-test-answer", action="store_true", help="без тестов отговор след качването")
+    di = sub.add_parser("demo-import", help="резултатите от пробата на демата → topics[n].demo.results")
+    di.add_argument("folder")
+    di.add_argument("results", help="JSON по договора или лог с редове „t03 OK 75.2 s“")
+    di.add_argument("--words", help="файл с думи за скриване (потребители, машини) — извън репото")
+    di.add_argument("--date", help="дата на пробата ГГГГ-ММ-ДД (ако я няма в резултатите)")
+    di.add_argument("--dry-run", action="store_true")
+    fb = sub.add_parser("feedback", help="обобщение на отговорите от износа в CSV (без личните полета)")
+    fb.add_argument("csv", nargs="?", help="свален CSV от admin/export.php")
+    fb.add_argument("--url", help="или адресът на износа (ORGANIZER_ADMIN_USER / ORGANIZER_ADMIN_PASS)")
+    fb.add_argument("--spec", required=True, help="api/forms.json на сглобения сайт")
+    fb.add_argument("--form", help="id на въпросника (по подразбиране — от името на CSV или единственият)")
+    fb.add_argument("--out", help="запиши обобщението в този .md файл")
     q = sub.add_parser("qa", help="проверка A5: сглобяване, въпросниците на живо (PHP + SQLite), 360/1440 px")
     q.add_argument("folder")
     q.add_argument("report")
@@ -1036,6 +1068,47 @@ def main(argv=None):
         steps = dep.deploy(args.package, cfg, go=args.go, htaccess_ok=args.htaccess_ok,
                            test_answer=not args.no_test_answer)
         return 1 if any(ok is False for _, ok, _ in steps) else 0
+    if args.cmd == "demo-import":
+        import ops
+        try:
+            d, log = ops.demo_import(args.folder, args.results, args.words, args.date, dry_run=args.dry_run)
+        except (OSError, ValueError, KeyError) as e:
+            print("demo-import: %s" % e, file=sys.stderr)
+            return 1
+        for line in log:
+            print(line)
+        print("%s: %d нови · %d сменени" % ("разлика (без запис)" if args.dry_run else "записано",
+                                           len(d["added"]), len(d["changed"])))
+        return 0
+    if args.cmd == "feedback":
+        import ops
+        try:
+            with open(args.spec, encoding="utf-8") as f:
+                spec = json.load(f)
+            if args.url:
+                text, src = ops._fetch_csv(args.url), args.url
+            elif args.csv:
+                with open(args.csv, encoding="utf-8-sig") as f:
+                    text, src = f.read(), args.csv
+            else:
+                raise ValueError("дай CSV файл или --url")
+            fid = args.form or next((k for k in spec["forms"] if "_%s_" % k in os.path.basename(src.split("?")[0])
+                                     or "form=%s" % k in src), None)
+            if not fid and len(spec["forms"]) == 1:
+                fid = next(iter(spec["forms"]))
+            if fid not in spec["forms"]:
+                raise ValueError("кой въпросник? --form %s" % "|".join(spec["forms"]))
+            out = ops.feedback(text, spec["forms"][fid])
+        except (OSError, ValueError, KeyError) as e:
+            print("feedback: %s" % e, file=sys.stderr)
+            return 1
+        if args.out:
+            with open(args.out, "w", encoding="utf-8") as f:
+                f.write(out)
+            print("обобщение: %s" % args.out)
+        else:
+            print(out, end="")
+        return 0
     if args.cmd == "qa":
         import ops
         path, failed = ops.qa(args.folder, args.report, shots=not args.no_shots, build=build)
