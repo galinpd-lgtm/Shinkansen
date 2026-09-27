@@ -197,6 +197,16 @@ class Build(unittest.TestCase):
         self.assertIn("<h2>Организаторите</h2>", org)
         self.assertLess(org.index('<p class="kicker">Организатор</p>'), org.index('<p class="kicker">Съорганизатор</p>'))
 
+    def test_topic_without_lab(self):
+        # тема 3 в примера е защитата: "lab": false — няма блок и не е липса
+        self.assertNotIn("<h2>Лаборатория</h2>", self.read("tema-03-zashtita.html"))
+        self.assertIn("<h2>Лаборатория</h2>", self.read("tema-02-pamet.html"))
+        self.assertFalse(any(t.startswith("тема 3: лабораторията") for t in self.todo), self.todo)
+        event, people = example()
+        event = copy.deepcopy(event)
+        event["topics"][2]["lab"] = ["грешно"]
+        self.assertTrue(any("lab е" in e for e in organizer.check(event, people)[0]))
+
     def test_present_chain_across_pages(self):
         order = organizer.page_order(self.event)
         self.assertEqual(order[:3], ["index.html", "programa.html", "tema-01-parvi-razgovor.html"])

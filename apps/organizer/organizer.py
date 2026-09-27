@@ -167,12 +167,18 @@ def check(event, people):
         need(t, "title", where)
         if t.get("slug") and not SLUG_RE.match(t["slug"]):
             err.append("%s: slug само с малки латински букви, цифри и тире" % where)
-        for rid in t.get("lab", {}):
-            if rid not in role_ids:
-                err.append("%s: лабораторията ползва непозната роля „%s“" % (where, rid))
-        missing = [r for r in role_ids if not t.get("lab", {}).get(r)]
-        if missing and role_ids:
-            todo.append("%s: лабораторията е празна за %s" % (where, ", ".join(missing)))
+        lab = t.get("lab", {})
+        if lab is False:
+            pass    # темата няма лаборатория по замисъл (напр. защитата) — не е липса
+        elif not isinstance(lab, dict):
+            err.append("%s: lab е {роля: [задачи]} или false" % where)
+        else:
+            for rid in lab:
+                if rid not in role_ids:
+                    err.append("%s: лабораторията ползва непозната роля „%s“" % (where, rid))
+            missing = [r for r in role_ids if not lab.get(r)]
+            if missing and role_ids:
+                todo.append("%s: лабораторията е празна за %s" % (where, ", ".join(missing)))
         if not t.get("demo"):
             todo.append("%s: няма „Демо на живо“" % where)
         for s in t.get("sections", []):
@@ -543,7 +549,7 @@ def topic(event, t, demo):
             esc(dm.get("title", "Демо на живо")), '<p class="lead">%s</p>' % md(dm["intro"]) if dm.get("intro") else "",
             "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))), "demo", "Демо на живо"))
     roles = event.get("lab_roles", [])
-    if roles:
+    if roles and t.get("lab") is not False:
         cols = "".join('<article class="lab-col"><h3>%s</h3><ul>%s</ul></article>' % (
             esc(r["label"]), "".join("<li>%s</li>" % md(x) for x in t.get("lab", {}).get(r["id"], []))
             or '<li class="muted">Предстои</li>') for r in roles)
