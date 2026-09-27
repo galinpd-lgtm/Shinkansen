@@ -1,0 +1,101 @@
+/* Shinkansen организатор — общ стил. Цветовете и шрифтовете идват от theme в event.json (--accent, --ink, --paper). */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.55 var(--font-body);}
+a{color:inherit;text-decoration-color:var(--accent);text-underline-offset:.2em}
+h1,h2,h3{font-family:var(--font-display);line-height:1.1;margin:0 0 .5em;letter-spacing:-.01em}
+h1{font-size:clamp(2.2rem,6vw,4.6rem)}
+h2{font-size:clamp(1.6rem,3.5vw,2.6rem)}
+h3{font-size:1.15rem}
+p{margin:0 0 1em}
+.muted{opacity:.62;font-weight:400}
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+
+.ribbon{background:var(--ink);color:var(--paper);font-size:.82rem;letter-spacing:.04em;text-align:center;padding:.4em 16px}
+.top{display:flex;flex-wrap:wrap;gap:.5em 1.5em;align-items:center;justify-content:space-between;max-width:1120px;margin:0 auto;padding:14px 16px}
+.brand{font-family:var(--font-display);font-weight:700;font-size:1.25rem;text-decoration:none}
+.top nav{display:flex;flex-wrap:wrap;gap:.3em 1.2em}
+.top nav a{text-decoration:none;font-weight:600}
+.top nav a[aria-current]{color:var(--accent)}
+
+.block{padding:clamp(40px,7vw,88px) 0;border-top:1px solid color-mix(in srgb,var(--ink) 10%,transparent)}
+.hero{background:var(--ink);color:var(--paper);border:0}
+.hero .kicker{color:var(--accent)}
+.hero.small{padding:clamp(32px,5vw,56px) 0}
+.kicker{font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:.82rem;color:var(--accent);margin-bottom:1em}
+.lead{font-size:clamp(1.1rem,2vw,1.35rem);max-width:46em}
+.meta{opacity:.75}
+.actions{display:flex;flex-wrap:wrap;gap:.6em;margin-top:1.5em}
+.btn{display:inline-block;background:var(--accent);color:#fff;border:2px solid var(--accent);border-radius:999px;padding:.7em 1.4em;font:700 1rem var(--font-body);text-decoration:none;cursor:pointer}
+.btn.ghost{background:transparent;color:inherit;border-color:currentColor}
+.btn:focus-visible,a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.cta{text-align:center}.cta .lead{margin:0 auto 1em}
+
+.cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.cards.four{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.card{background:color-mix(in srgb,var(--ink) 4%,var(--paper));border-radius:14px;padding:20px;border-top:4px solid var(--accent)}
+.card p:last-child{margin:0}
+
+.topics{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.topic{display:flex;flex-direction:column;gap:.3em;padding:18px;border-radius:14px;text-decoration:none;border:1px solid color-mix(in srgb,var(--ink) 14%,transparent)}
+.topic:hover{border-color:var(--accent)}
+.topic .n,.toc .n{font-family:var(--font-display);color:var(--accent);font-weight:700;font-size:1.4rem}
+.topic span:last-child{opacity:.75;font-size:.95rem}
+.toc{list-style:none;padding:0;margin:0;display:grid;gap:14px}
+.toc a{text-decoration:none;font-size:1.25rem}.toc p{margin:.2em 0 0 2.4em;opacity:.75}
+
+.people{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.person{text-align:center}
+.avatar{display:block;width:120px;height:120px;margin:0 auto 12px;border-radius:50%;object-fit:cover;background:color-mix(in srgb,var(--ink) 10%,var(--paper))}
+.person.empty .avatar{border:2px dashed color-mix(in srgb,var(--ink) 25%,transparent);background:transparent}
+.person .role{color:var(--accent);font-weight:600;margin:0 0 .4em}
+
+.ticks{list-style:none;padding:0}.ticks li{padding-left:1.6em;position:relative;margin:.4em 0;font-size:1.15rem}
+.ticks li::before{content:"";position:absolute;left:0;top:.45em;width:.8em;height:.8em;border-radius:3px;background:var(--accent)}
+.lab{display:grid;gap:14px;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr))}
+.lab-col{background:color-mix(in srgb,var(--ink) 4%,var(--paper));border-radius:14px;padding:18px}
+.lab-col h3{color:var(--accent)}.lab-col ul{margin:0;padding-left:1.1em}.lab-col li{margin:.4em 0}
+@media (max-width:860px){.lab{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.lab{grid-template-columns:1fr}}
+.demo{background:color-mix(in srgb,var(--accent) 12%,var(--paper))}
+.steps{font-size:1.15rem}.steps li{margin:.5em 0}
+.pager{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1em;max-width:1120px;margin:0 auto;padding:28px 16px;font-weight:600}
+
+.slots{width:100%;border-collapse:collapse}
+.slots td{padding:12px 8px;border-bottom:1px solid color-mix(in srgb,var(--ink) 12%,transparent);vertical-align:top}
+.slots .time{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--accent);font-weight:700;width:8em}
+.slots a{font-size:.95rem}
+
+.survey{max-width:720px}
+.field{border:0;margin:0 0 22px;padding:0}
+.field>legend,.field>label:not(.opt){display:block;font-weight:700;margin-bottom:.4em;padding:0}
+.opt{display:flex;gap:.5em;align-items:center;margin:.3em 0;font-weight:400}
+.opt.other input[type=text]{flex:1;min-width:0}
+input[type=text],input[type=email],textarea{width:100%;font:inherit;padding:.6em .7em;border-radius:10px;border:1px solid color-mix(in srgb,var(--ink) 25%,transparent);background:#fff;color:#15151a}
+input[type=radio],input[type=checkbox]{width:1.15em;height:1.15em;accent-color:var(--accent);flex:none}
+.help{font-size:.92rem;opacity:.72;margin:.2em 0 .5em}
+.req{color:var(--accent)}
+.field.invalid>legend,.field.invalid>label:not(.opt),.field.invalid.consent .opt{color:#c0392b}
+.hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+.notice{background:color-mix(in srgb,var(--accent) 15%,var(--paper));padding:.7em 1em;border-radius:10px}
+.status{font-weight:700}.status.ok{color:#1e7d46}.status.bad{color:#c0392b}
+
+.foot{display:flex;flex-wrap:wrap;gap:1em;justify-content:space-between;align-items:center;max-width:1120px;margin:0 auto;padding:28px 16px;font-size:.9rem;opacity:.8}
+.present-toggle{font:inherit;background:none;border:1px solid currentColor;border-radius:999px;padding:.35em 1em;color:inherit;cursor:pointer}
+
+/* Прожекция: P включва, стрелки/кликер прелистват, Esc излиза. Всеки блок е един екран, шрифт от 28 px. */
+html.present{font-size:clamp(28px,2.3vw,46px)}
+html.present body{font-size:1rem;overflow:hidden}
+html.present .ribbon,html.present .top,html.present .foot,html.present .pager{display:none}
+html.present .block{display:none;min-height:100vh;height:100vh;overflow:auto;padding:6vh 0;border:0}
+html.present .block.on{display:flex;align-items:center}
+html.present .block .wrap{max-width:92vw;width:100%}
+html.present h1{font-size:2.6rem}html.present h2{font-size:1.9rem}html.present h3{font-size:1.1rem}
+html.present .lead,html.present .ticks li,html.present .steps{font-size:1.05rem}
+html.present .card,html.present .lab-col{padding:.8em}
+html.present .people{grid-template-columns:repeat(auto-fill,minmax(7em,1fr))}
+html.present .avatar{width:4em;height:4em}
+.present-count{display:none}
+html.present .present-count{display:block;position:fixed;right:1em;bottom:.6em;font-size:.55rem;opacity:.5;z-index:5}
+@media print{.ribbon,.top nav,.foot button{display:none}.block{break-inside:avoid}}
+@media (prefers-reduced-motion:no-preference){.topic,.btn{transition:border-color .15s,transform .15s}.btn:hover{transform:translateY(-1px)}}
