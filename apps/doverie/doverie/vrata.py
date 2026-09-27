@@ -1,8 +1,10 @@
 """Топлинна врата: преди всяко викане на модела пита GET <gate_url>.
 
 Заето е, когато вратата отговори с 503/429, с текст „busy“/„hot“ или с JSON, в който
-state/status е „busy“/„hot“ или busy е true. Тогава моделът не се вика (изход 4).
-Ако вратата не отговаря, моделът също не се вика — това е грешка (изход 1), не „свободно“.
+state/status е „busy“/„hot“ или busy е true.
+
+Вратата никога не се заобикаля. Моделът не се вика и изходът е 4 („не е безопасно сега, опитай по-късно“) и когато:
+вратата не отговаря или отговорът е неразбираем, и когато няма зададен gate_url.
 """
 import json
 import urllib.error
@@ -11,12 +13,20 @@ import urllib.request
 ZAETO = {"busy", "hot", "zaeto", "заето", "горещо"}
 
 
-class VrataZaeta(Exception):
-    """Машината е заета или гореща — без викане."""
+class VrataNeBezopasno(Exception):
+    """Не е безопасно да се вика моделът сега — без викане, изход 4. Нищо не се губи."""
 
 
-class VrataGreshka(Exception):
-    """Вратата не отговаря или отговорът е неразбираем — без викане."""
+class VrataZaeta(VrataNeBezopasno):
+    """Машината е заета или гореща."""
+
+
+class VrataGreshka(VrataNeBezopasno):
+    """Вратата не отговаря или отговорът е неразбираем."""
+
+
+class VrataLipsva(VrataNeBezopasno):
+    """Няма зададен gate_url — без врата моделът не се вика."""
 
 
 def http_get(url, timeout):
@@ -51,9 +61,10 @@ class Vrata:
         self.pitaniya = 0
 
     def proveri(self):
-        """Вдига VrataZaeta или VrataGreshka; иначе връща нищо. Без url вратата не се пита."""
+        """Вдига VrataZaeta, VrataGreshka или VrataLipsva; иначе връща нищо."""
         if not self.url:
-            return
+            raise VrataLipsva("няма зададен gate_url — без топлинна врата моделът не се вика "
+                              "(задай gate_url в конфигурацията или ползвай --bez-model)")
         self.pitaniya += 1
         try:
             status, tyalo = self._get(self.url, self.timeout)

@@ -1,7 +1,8 @@
 """python -m doverie ocenka --tekst file.txt | --url … [--bez-model] [--format json|tekst]
 python -m doverie serve [--port 8765]
 
-Кодове на изход: 0 готово · 4 машината е заета/горещо (моделът не е викан) · 1 грешка · 2 грешна употреба.
+Кодове на изход: 0 готово · 4 не е безопасно сега — машината е заета/гореща, вратата не отговаря или няма
+gate_url (моделът не е викан; опитай по-късно) · 1 грешка · 2 грешна употреба.
 """
 import argparse
 import json
@@ -16,7 +17,7 @@ from .config import GreshkaConfig, zaredi
 from .model import GreshkaModel, Model
 from .ocenka import ocenka, otchet
 from .tekst import ot_html
-from .vrata import VrataGreshka, VrataZaeta
+from .vrata import VrataGreshka, VrataLipsva, VrataNeBezopasno, VrataZaeta
 
 IZHOD_OK, IZHOD_GRESHKA, IZHOD_ZAETO = 0, 1, 4
 
@@ -85,8 +86,6 @@ def _ocenka(a):
     if not tekst.strip():
         raise ValueError("празен текст")
     model = None if a.bez_model else Model(cfg)
-    if model is not None and not cfg.get("gate_url"):
-        print("внимание: няма gate_url — моделът се вика без топлинна врата", file=sys.stderr)
     return ocenka(tekst, cfg, model=model, iztochnik=iztochnik, avtor=a.avtor, zapomni=a.zapomni)
 
 
@@ -103,11 +102,12 @@ def main(argv=None):
     t0 = time.monotonic()
     try:
         rez = _ocenka(a)
-    except VrataZaeta as e:
-        print("заето: %s" % e, file=sys.stderr)
-        dnevnik(True, "заето · exit 4")
+    except VrataNeBezopasno as e:
+        vid = {VrataZaeta: "заето", VrataGreshka: "вратата не отговаря", VrataLipsva: "няма врата"}[type(e)]
+        print("%s: %s. Моделът не е викан — опитай по-късно." % (vid, e), file=sys.stderr)
+        dnevnik(True, "%s · exit 4" % vid)
         return IZHOD_ZAETO
-    except (VrataGreshka, GreshkaModel, GreshkaConfig, OSError, ValueError) as e:
+    except (GreshkaModel, GreshkaConfig, OSError, ValueError) as e:
         print("грешка: %s" % e, file=sys.stderr)
         dnevnik(False, "грешка · exit 1")
         return IZHOD_GRESHKA

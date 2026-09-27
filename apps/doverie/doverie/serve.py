@@ -1,7 +1,7 @@
 """Малък HTTP само на 127.0.0.1 за разширението (Z9): POST /ocenka.
 
 Тяло: {"tekst": "...", "iztochnik": "example.org", "avtor": "...", "bez_model": false}
-Отговор: 200 + JSON на оценката · 503 при заета машина · 400 при грешен вход · 502 при грешка на модела.
+Отговор: 200 + JSON на оценката · 503 при заета машина, недостъпна или липсваща врата · 400 при грешен вход · 502 при грешка на модела.
 Сървърът не тегли адреси — разширението праща текста, който вече е на екрана.
 """
 import json
@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .model import GreshkaModel, Model
 from .ocenka import ocenka
-from .vrata import VrataGreshka, VrataZaeta
+from .vrata import VrataNeBezopasno
 
 HOST = "127.0.0.1"
 MAKS_BAYTA = 1_000_000
@@ -53,9 +53,9 @@ def napravi_handler(cfg, bez_model=False, model_fabrika=None):
             model = None if (bez_model or vh.get("bez_model")) else fabrika()
             try:
                 rez = ocenka(tekst, cfg, model=model, iztochnik=vh.get("iztochnik"), avtor=vh.get("avtor"))
-            except VrataZaeta:
-                return self._otg(503, {"greshka": "машината е заета — опитай по-късно"})
-            except (VrataGreshka, GreshkaModel) as e:
+            except VrataNeBezopasno as e:
+                return self._otg(503, {"greshka": "не е безопасно сега — опитай по-късно (%s)" % e})
+            except GreshkaModel as e:
                 return self._otg(502, {"greshka": str(e)})
             self._otg(200, rez)
 

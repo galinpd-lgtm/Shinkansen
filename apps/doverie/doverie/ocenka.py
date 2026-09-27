@@ -131,7 +131,7 @@ def ocenka(tekst, cfg, model=None, iztochnik=None, avtor=None, vidyani=None, zap
     """Оценява текста. model=None → режим без модел. Връща dict по схемата от README.
 
     avtor се пази в изхода, но не се оценява (без профили на отделни хора).
-    VrataZaeta / VrataGreshka / GreshkaModel се пропускат нагоре — моделът не се вика повече.
+    VrataNeBezopasno (заето, недостъпна врата, няма врата) / GreshkaModel се пропускат нагоре — моделът не се вика повече.
     """
     tekst = tekst or ""
     s_model = model is not None

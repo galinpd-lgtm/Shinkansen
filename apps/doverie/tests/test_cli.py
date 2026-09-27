@@ -68,13 +68,33 @@ class TestCli(unittest.TestCase):
         self.assertEqual(out, "")
         self.assertIn("заето", err)
 
-    def test_vratata_pada_izhod_1(self):
+    def test_vratata_pada_izhod_4(self):
         def pada(*a):
             raise OSError("няма връзка")
         with mock.patch.object(vrata_mod, "http_get", pada):
-            kod, _, err = pusni("ocenka", "--tekst", PRIMER_1)
-        self.assertEqual(kod, 1)
-        self.assertIn("вратата", err)
+            kod, out, err = pusni("ocenka", "--tekst", PRIMER_1)
+        self.assertEqual(kod, 4)
+        self.assertEqual(out, "")
+        self.assertIn("вратата не отговаря", err)
+        self.assertIn("опитай по-късно", err)
+
+    def test_bez_gate_url_izhod_4(self):
+        c = cfg()
+        c["gate_url"] = None
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "config.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(c, f)
+            with mock.patch.object(vrata_mod, "http_get", bez_mrezha):
+                kod, out, err = pusni("ocenka", "--tekst", PRIMER_1, "--config", p)
+                self.assertEqual(kod, 4)
+                self.assertEqual(out, "")
+                self.assertIn("няма врата", err)
+                self.assertIn("gate_url", err)
+                # --bez-model работи и без врата
+                kod, out, _ = pusni("ocenka", "--tekst", PRIMER_1, "--config", p, "--bez-model")
+                self.assertEqual(kod, 0)
+                self.assertEqual(len(json.loads(out)["osi"]), 7)
 
     def test_lipsvasht_fail_izhod_1(self):
         self.assertEqual(pusni("ocenka", "--tekst", "/nyama/takav.txt", "--bez-model")[0], 1)
@@ -132,6 +152,15 @@ class TestServe(unittest.TestCase):
                 raise VrataZaeta("заето")
         H = napravi_handler(cfg(), model_fabrika=Zaet)
         self.assertEqual(FalshivaZayavka(H, "POST", "/ocenka", json.dumps({"tekst": primer(2)}).encode()).kod, 503)
+
+    def test_bez_vrata_503(self):
+        c = cfg()
+        c["gate_url"] = None
+        H = napravi_handler(c)
+        with mock.patch.object(model_mod, "http_post", bez_mrezha):
+            z = FalshivaZayavka(H, "POST", "/ocenka", json.dumps({"tekst": primer(2)}).encode())
+        self.assertEqual(z.kod, 503)
+        self.assertIn("опитай по-късно", z.json["greshka"])
 
     def test_samo_lokalno(self):
         from doverie import serve

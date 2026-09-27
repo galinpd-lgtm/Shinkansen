@@ -11,7 +11,7 @@ from doverie import model as model_mod
 from doverie import vrata as vrata_mod
 from doverie.model import GreshkaModel, Model
 from doverie.ocenka import ocenka
-from doverie.vrata import Vrata, VrataGreshka, VrataZaeta
+from doverie.vrata import Vrata, VrataGreshka, VrataLipsva, VrataNeBezopasno, VrataZaeta
 
 
 def bez_mrezha(*a, **kw):
@@ -20,6 +20,10 @@ def bez_mrezha(*a, **kw):
 
 def ollama_otg(sadarzhanie):
     return 200, json.dumps({"message": {"role": "assistant", "content": json.dumps(sadarzhanie, ensure_ascii=False)}})
+
+
+def otvorena():
+    return Vrata("http://g", get=lambda *a: (200, "ok"))
 
 
 class Zapis:
@@ -50,7 +54,7 @@ class TestKlient(unittest.TestCase):
 
     def test_pisach(self):
         post = Zapis(ollama_otg({}))
-        Model(cfg(), vrata=Vrata(None), post=post).chat("pisach", "с", "п")
+        Model(cfg(), vrata=otvorena(), post=post).chat("pisach", "с", "п")
         self.assertEqual(post.vikaniya[0][1]["model"], "gemma4:26b")
 
     def test_busy_spira_vikaneto(self):
@@ -66,9 +70,27 @@ class TestKlient(unittest.TestCase):
         def pada(*a):
             raise OSError("отказана връзка")
         post = Zapis(ollama_otg({}))
-        with self.assertRaises(VrataGreshka):
+        with self.assertRaises(VrataGreshka) as k:
             Model(cfg(), vrata=Vrata("http://g", get=pada), post=post).chat("struktura", "с", "п")
+        self.assertIsInstance(k.exception, VrataNeBezopasno)
         self.assertEqual(post.vikaniya, [])
+
+    def test_nerazbiraem_kod_na_vratata(self):
+        post = Zapis(ollama_otg({}))
+        with self.assertRaises(VrataGreshka):
+            Model(cfg(), vrata=Vrata("http://g", get=Zapis((404, ""))), post=post).chat("struktura", "с", "п")
+        self.assertEqual(post.vikaniya, [])
+
+    def test_bez_gate_url_nikakvo_vikane(self):
+        for url in (None, ""):
+            with self.subTest(url):
+                c = cfg()
+                c["gate_url"] = url
+                post = Zapis(ollama_otg({}))
+                with self.assertRaises(VrataLipsva) as k:
+                    Model(c, post=post).chat("struktura", "с", "п")
+                self.assertIsInstance(k.exception, VrataNeBezopasno)
+                self.assertEqual(post.vikaniya, [])
 
     def test_vratata_se_pita_predi_vsyako_vikane(self):
         get = Zapis((200, "ok"))
@@ -86,17 +108,17 @@ class TestKlient(unittest.TestCase):
 
     def test_think_nepodderzhan_opit_bez_nego(self):
         post = Zapis((400, '{"error": "model does not support thinking"}'), ollama_otg({"ok": 1}))
-        self.assertEqual(Model(cfg(), vrata=Vrata(None), post=post).chat("pisach", "с", "п"), {"ok": 1})
+        self.assertEqual(Model(cfg(), vrata=otvorena(), post=post).chat("pisach", "с", "п"), {"ok": 1})
         self.assertIn("think", post.vikaniya[0][1])
         self.assertNotIn("think", post.vikaniya[1][1])
 
     def test_ollama_greshka(self):
         with self.assertRaises(GreshkaModel):
-            Model(cfg(), vrata=Vrata(None), post=Zapis((500, "x"))).chat("pisach", "с", "п")
+            Model(cfg(), vrata=otvorena(), post=Zapis((500, "x"))).chat("pisach", "с", "п")
 
     def test_json_v_ograzhdane(self):
         post = Zapis((200, json.dumps({"message": {"content": 'Ето:\n```json\n{"ocenka": 3}\n```'}})))
-        self.assertEqual(Model(cfg(), vrata=Vrata(None), post=post).chat("pisach", "с", "п"), {"ocenka": 3})
+        self.assertEqual(Model(cfg(), vrata=otvorena(), post=post).chat("pisach", "с", "п"), {"ocenka": 3})
 
 
 class FalshivModelSVrata(FalshivModel):
