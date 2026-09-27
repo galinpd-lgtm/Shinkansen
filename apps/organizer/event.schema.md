@@ -46,3 +46,31 @@
 ```
 
 `{"slot": "Памет и бази данни"}` се показва като „Лектор · Памет и бази данни — очаква потвърждение“.
+
+# sources — съдържание от Markdown файлове (`organizer.py fill`)
+
+Решенията и текстовете идват от бележки в Markdown: раздел `## N. …` и в него JSON блок в ограда с `json`.
+`fill` ги влива в event.json **дословно** и показва разликата по ключове; `--dry-run` само я показва.
+
+```json
+"sources": [
+ {"file": "izvori/demota.md", "block": "1", "pick": "demo_steps", "map": true,
+  "target": "topics[n={key}].demo.steps", "mode": "extend"},
+ {"file": "izvori/demota.md", "block": "2", "target": "home.sections", "mode": "upsert", "key": "title"}
+]
+```
+
+| Ключ | Какво е |
+|---|---|
+| `file` ✱ | път спрямо папката на събитието (или абсолютен, `~/…`) |
+| `block` ✱ | номерът на раздела („2“) или част от заглавието му |
+| `index` | кой JSON блок в раздела (от 0) |
+| `pick` | само този ключ от блока |
+| `map` | блокът е `{ключ: стойност}`; `{key}` в `target` се заменя с всеки ключ |
+| `target` ✱ | път: `home.sections`, `topics[n=3].demo`, `forms[id=zapis].fields`, `topics[0]` |
+| `mode` | `set` (по подразбиране) · `merge` (обект в обект) · `append` · `extend` · `insert` (с `at`) · `upsert` (с `key`) |
+
+Повторимо: `append`/`extend`/`insert` не добавят второ копие, `upsert` сменя елемента със същия `key`.
+При запис старото става `event.json.orig_ДАТА` (второ копие в същия ден — `…-2`, нищо не се презаписва),
+а в `decisions.md` се дописва кой източник → кой ключ и колко ключа са се сменили. `check` и `build`
+спират, ако файл или раздел от `sources` липсва.

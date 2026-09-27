@@ -4,6 +4,7 @@
     python3 organizer.py new ПАПКА                 # ново събитие от примерния шаблон
     python3 organizer.py check ПАПКА               # грешки, липси и всички „[ЧАКА …]“
     python3 organizer.py build ПАПКА ИЗХОД [--demo]
+    python3 organizer.py fill ПАПКА [--dry-run]                 # съдържание от sources (Markdown + JSON блокове)
     python3 organizer.py package САЙТ ПАПКА [--prev ПРЕДИШЕН]   # за качване: tgz, SHA-256, разлика
     python3 organizer.py qa ПАПКА ОТЧЕТ [--no-shots]            # A5 с една команда
 
@@ -863,8 +864,10 @@ def forbidden_hits(out, written, forbid, forbid_regex=()):
 # ---------- сглобяване ----------
 
 def build(folder, out, demo=False):
+    import ops
     event, people = load(folder)
     errors, todo = check(event, people)
+    errors += ops.check_sources(folder, event)
     if errors:
         raise ValueError("\n".join(errors))
     os.makedirs(out, exist_ok=True)
@@ -974,6 +977,9 @@ def main(argv=None):
     pk.add_argument("out")
     pk.add_argument("--prev", help="предишен пакет (.tgz / .manifest.txt) или папка")
     pk.add_argument("--name", help="начало на името на пакета (по подразбиране — името на папката)")
+    fl = sub.add_parser("fill", help="влива JSON блоковете от sources в event.json и показва разликата")
+    fl.add_argument("folder")
+    fl.add_argument("--dry-run", action="store_true", help="само разликата, без запис")
     q = sub.add_parser("qa", help="проверка A5: сглобяване, въпросниците на живо (PHP + SQLite), 360/1440 px")
     q.add_argument("folder")
     q.add_argument("report")
@@ -998,6 +1004,21 @@ def main(argv=None):
             import ops as _o
             print(_o.diff_text(r["diff"]), end="")
         return 0
+    if args.cmd == "fill":
+        import ops
+        try:
+            d, log = ops.fill(args.folder, dry_run=args.dry_run)
+        except (OSError, ValueError, KeyError) as e:
+            print("fill: %s" % e, file=sys.stderr)
+            return 1
+        for line in log:
+            print("източник  " + line)
+        for key, label in (("added", "нов"), ("changed", "сменен"), ("removed", "махнат")):
+            for k in d[key]:
+                print("%-7s   %s" % (label, k))
+        print("%s: %d нови · %d сменени · %d махнати" % ("разлика (без запис)" if args.dry_run else "записано",
+                                                        len(d["added"]), len(d["changed"]), len(d["removed"])))
+        return 0
     if args.cmd == "qa":
         import ops
         path, failed = ops.qa(args.folder, args.report, shots=not args.no_shots, build=build)
@@ -1009,6 +1030,8 @@ def main(argv=None):
         print("не мога да прочета %s: %s" % (args.folder, e), file=sys.stderr)
         return 1
     errors, todo = check(event, people)
+    import ops
+    errors += ops.check_sources(args.folder, event)
     marker = event.get("publish", {}).get("pending_marker", "[ЧАКА")
     waits = pending(event, marker) + pending(people, marker, "data")
     if args.cmd == "check":

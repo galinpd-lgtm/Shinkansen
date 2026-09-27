@@ -103,5 +103,68 @@ class Qa(unittest.TestCase):
             self.assertTrue(all(f["id"] in ans for f in form["fields"]))
 
 
+
+
+class Fill(unittest.TestCase):
+    def copy(self):
+        d = tempfile.mkdtemp()
+        shutil.copytree(EXAMPLE, d, dirs_exist_ok=True)
+        self.addCleanup(shutil.rmtree, d)
+        return d
+
+    def test_example_is_already_filled(self):
+        d, _ = ops.fill(EXAMPLE, dry_run=True)
+        self.assertEqual(d, {"added": [], "removed": [], "changed": []})
+
+    def test_source_change_shows_key_diff_and_keeps_backup(self):
+        d = self.copy()
+        md = os.path.join(d, "izvori", "demota.md")
+        with open(md, encoding="utf-8") as f:
+            text = f.read()
+        with open(md, "w", encoding="utf-8") as f:
+            f.write(text.replace("Отговор с цитат.", "Отговор с цитат и отказ."))
+        diff, log = ops.fill(d)
+        self.assertEqual(diff["changed"], ["home.sections[2].items[1].text"])
+        self.assertEqual(diff["added"], [])                           # upsert по заглавие, не второ копие
+        self.assertTrue(os.path.exists(os.path.join(d, "event.json.orig_" + date.today().isoformat())))
+        with open(os.path.join(d, "decisions.md"), encoding="utf-8") as f:
+            self.assertIn("izvori/demota.md#2 → home.sections (upsert)", f.read())
+        ops.fill(d)                                                   # нищо ново → нито запис, нито копие
+        with open(md, "w", encoding="utf-8") as f:
+            f.write(text)
+        ops.fill(d)
+        backups = [x for x in os.listdir(d) if x.startswith("event.json.orig_")]
+        self.assertEqual(len(backups), 2)                             # второто копие не презаписва първото
+
+    def test_errors_reach_check_and_build(self):
+        d = self.copy()
+        with open(os.path.join(d, "event.json"), encoding="utf-8") as f:
+            ev = json.load(f)
+        ev["sources"].append({"file": "izvori/nyama.md", "block": "1", "target": "x"})
+        ev["sources"].append({"file": "izvori/demota.md", "block": "9", "target": "x"})
+        with open(os.path.join(d, "event.json"), "w", encoding="utf-8") as f:
+            json.dump(ev, f, ensure_ascii=False)
+        errs = ops.check_sources(d, ev)
+        self.assertTrue(any("няма файл izvori/nyama.md" in e for e in errs), errs)
+        self.assertTrue(any("раздел „9“: няма такъв" in e for e in errs), errs)
+        self.assertEqual(organizer.main(["check", d]), 1)
+
+    def test_apply_op_modes(self):
+        doc = {"topics": [{"n": 1, "demo": {"steps": ["a"]}}], "home": {"sections": []}}
+        ops.apply_op(doc, "topics[n=1].demo.steps", ["b", "a"], "extend")
+        self.assertEqual(doc["topics"][0]["demo"]["steps"], ["a", "b"])
+        ops.apply_op(doc, "topics[n=1].demo.steps", "z", "insert", at=0)
+        ops.apply_op(doc, "topics[n=1].demo.steps", "z", "insert", at=0)
+        self.assertEqual(doc["topics"][0]["demo"]["steps"], ["z", "a", "b"])
+        ops.apply_op(doc, "topics[0].demo", {"title": "Демо"}, "merge")
+        self.assertEqual(doc["topics"][0]["demo"]["title"], "Демо")
+        ops.apply_op(doc, "privacy.title", "Поверителност")           # липсващите обекти се създават
+        self.assertEqual(doc["privacy"], {"title": "Поверителност"})
+        with self.assertRaises(ValueError):
+            ops.apply_op(doc, "topics[n=7].demo", {}, "set")
+        with self.assertRaises(ValueError):
+            ops.apply_op(doc, "home.sections", {"x": 1}, "upsert")    # upsert без key
+
+
 if __name__ == "__main__":
     unittest.main()

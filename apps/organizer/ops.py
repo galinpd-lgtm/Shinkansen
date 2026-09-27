@@ -343,3 +343,225 @@ def qa(folder, report_dir, shots=True, build=None):
         f.write("\n".join(lines) + "\n")
     shutil.rmtree(site, ignore_errors=True)
     return path, failed
+
+
+# ---------- fill: съдържание от Markdown файлове с JSON блокове ----------
+
+import re as _re
+
+HEADING_RE = _re.compile(r"^##\s+(?:(\d+)\.\s*)?(.+?)\s*$")
+FENCE_RE = _re.compile(r"^```json\s*$")
+
+
+def md_blocks(text):
+    """[{num, title, blocks: [json текст, …]}] — по раздел „## N. …“, JSON блоковете в него поред."""
+    sections, cur, buf, inside = [], None, [], False
+    for line in text.splitlines():
+        if inside:
+            if line.strip() == "```":
+                cur["blocks"].append("\n".join(buf))
+                inside, buf = False, []
+            else:
+                buf.append(line)
+            continue
+        m = HEADING_RE.match(line)
+        if m:
+            cur = {"num": m.group(1), "title": m.group(2), "blocks": []}
+            sections.append(cur)
+        elif FENCE_RE.match(line.strip()) and cur is not None:
+            inside = True
+    return sections
+
+
+def find_block(sections, block, index=0):
+    """block: номерът на раздела („2“) или част от заглавието му; index — кой JSON блок в раздела (от 0)."""
+    key = str(block)
+    hits = [s for s in sections if s["num"] == key] or [s for s in sections if key in s["title"]]
+    if len(hits) != 1:
+        raise ValueError("раздел „%s“: %s" % (block, "няма такъв" if not hits else "повече от един"))
+    if index >= len(hits[0]["blocks"]):
+        raise ValueError("раздел „%s“: няма JSON блок №%d" % (block, index + 1))
+    return json.loads(hits[0]["blocks"][index])
+
+
+SEG_RE = _re.compile(r"^([^\[\]]+)?((?:\[[^\]]+\])*)$")
+
+
+def _parse_path(path):
+    """„topics[n=3].demo.steps“ → [("topics", None), (None, ("n", "3")), ("demo", None), ("steps", None)]."""
+    out = []
+    for seg in path.split("."):
+        m = SEG_RE.match(seg)
+        if not m:
+            raise ValueError("път „%s“: не разбирам „%s“" % (path, seg))
+        if m.group(1):
+            out.append(("key", m.group(1)))
+        for sel in _re.findall(r"\[([^\]]+)\]", m.group(2) or ""):
+            if "=" in sel:
+                k, v = sel.split("=", 1)
+                out.append(("where", (k.strip(), v.strip())))
+            else:
+                out.append(("idx", int(sel)))
+    return out
+
+
+def _step(node, step, create):
+    kind, arg = step
+    if kind == "key":
+        if not isinstance(node, dict):
+            raise ValueError("„%s“ не е обект" % arg)
+        if arg not in node:
+            if not create:
+                raise ValueError("няма „%s“" % arg)
+            node[arg] = {}
+        return node, arg
+    if not isinstance(node, list):
+        raise ValueError("очаквах списък пред [%s]" % (arg,))
+    if kind == "idx":
+        if not -len(node) <= arg < len(node):
+            raise ValueError("няма елемент [%d]" % arg)
+        return node, arg
+    k, v = arg
+    hits = [i for i, el in enumerate(node) if isinstance(el, dict) and str(el.get(k)) == v]
+    if len(hits) != 1:
+        raise ValueError("[%s=%s]: %s" % (k, v, "няма такъв" if not hits else "повече от един"))
+    return node, hits[0]
+
+
+def apply_op(doc, target, value, mode="set", at=None, key=None):
+    """Вливане на стойност в doc по път. Режими: set, merge, append, extend, insert, upsert.
+    append/extend/insert не добавят второ копие на същия елемент — второ пускане не дублира."""
+    steps = _parse_path(target)
+    node = doc
+    for step in steps[:-1]:
+        parent, k = _step(node, step, create=True)
+        node = parent[k]
+    parent, k = _step(node, steps[-1], create=mode not in ("merge",))
+    cur = parent[k] if not (isinstance(parent, dict) and k not in parent) else None
+    if mode == "set":
+        parent[k] = value
+    elif mode == "merge":
+        if not isinstance(cur, dict) or not isinstance(value, dict):
+            raise ValueError("%s: merge иска обект към обект" % target)
+        cur.update(value)
+    elif mode in ("append", "extend", "insert", "upsert"):
+        if cur in (None, {}):
+            parent[k] = cur = []
+        if not isinstance(cur, list):
+            raise ValueError("%s: %s иска списък" % (target, mode))
+        items = value if mode == "extend" else [value]
+        if mode == "upsert":
+            if not key:
+                raise ValueError("%s: upsert иска key" % target)
+            for it in items:
+                hit = [i for i, el in enumerate(cur) if isinstance(el, dict) and el.get(key) == it.get(key)]
+                if hit:
+                    cur[hit[0]] = it
+                else:
+                    cur.append(it)
+        else:
+            pos = len(cur) if at is None or mode != "insert" else at
+            for it in items:
+                if it in cur:
+                    continue
+                cur.insert(pos, it)
+                pos += 1
+    else:
+        raise ValueError("%s: непознат режим „%s“" % (target, mode))
+
+
+def flatten(obj, prefix=""):
+    out = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.update(flatten(v, "%s.%s" % (prefix, k) if prefix else k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            out.update(flatten(v, "%s[%d]" % (prefix, i)))
+        if not obj:
+            out[prefix] = []
+    else:
+        out[prefix] = obj
+    return out
+
+
+def key_diff(before, after):
+    a, b = flatten(before), flatten(after)
+    return {"added": sorted(k for k in b if k not in a), "removed": sorted(k for k in a if k not in b),
+            "changed": sorted(k for k in b if k in a and a[k] != b[k])}
+
+
+def _src_path(folder, file):
+    p = os.path.expanduser(file)
+    return p if os.path.isabs(p) else os.path.normpath(os.path.join(folder, p))
+
+
+def fill(folder, dry_run=False, now=None):
+    """Изпълнява event.json → sources: [{file, block, index?, pick?, target, mode?, at?, key?, map?}].
+    map: true — стойността е {ключ: стойност}, а target съдържа {key} (напр. topics[n={key}].demo.steps).
+    Връща (разлика, дневник). Без dry_run записва event.json (старият → event.json.orig_ДАТА[-N])."""
+    ev_path = os.path.join(folder, "event.json")
+    with open(ev_path, encoding="utf-8") as f:
+        event = json.load(f)
+    before = json.loads(json.dumps(event))
+    log = []
+    cache = {}
+    for i, src in enumerate(event.get("sources", [])):
+        where = "sources[%d]" % i
+        path = _src_path(folder, src["file"])
+        if path not in cache:
+            with open(path, encoding="utf-8") as f:
+                cache[path] = md_blocks(f.read())
+        value = find_block(cache[path], src["block"], int(src.get("index", 0)))
+        if src.get("pick"):
+            value = value[src["pick"]]
+        targets = [(src["target"], value)]
+        if src.get("map"):
+            if not isinstance(value, dict) or "{key}" not in src["target"]:
+                raise ValueError("%s: map иска обект и {key} в target" % where)
+            targets = [(src["target"].replace("{key}", str(k)), v) for k, v in value.items()]
+        for target, v in targets:
+            try:
+                apply_op(event, target, v, src.get("mode", "set"), src.get("at"), src.get("key"))
+            except ValueError as e:
+                raise ValueError("%s (%s#%s → %s): %s" % (where, src["file"], src["block"], target, e))
+        log.append("%s#%s%s → %s (%s)" % (src["file"], src["block"],
+                                          "[%s]" % src["index"] if src.get("index") else "",
+                                          src["target"], src.get("mode", "set")))
+    d = key_diff(before, event)
+    if not dry_run and any(d.values()):
+        stamp = (now or datetime.now()).strftime("%Y-%m-%d")
+        backup, n = ev_path + ".orig_" + stamp, 1
+        while os.path.exists(backup):
+            n += 1
+            backup = "%s.orig_%s-%d" % (ev_path, stamp, n)
+        shutil.copyfile(ev_path, backup)
+        with open(ev_path, "w", encoding="utf-8") as f:
+            json.dump(event, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        with open(os.path.join(folder, "decisions.md"), "a", encoding="utf-8") as f:
+            f.write("\n## %s · fill\n\n" % (now or datetime.now()).strftime("%Y-%m-%d %H:%M"))
+            f.write("".join("- %s\n" % x for x in log))
+            f.write("- промени: %d нови, %d сменени, %d махнати ключа; старото: %s\n" % (
+                len(d["added"]), len(d["changed"]), len(d["removed"]), os.path.basename(backup)))
+    return d, log
+
+
+def check_sources(folder, event):
+    """За check: всеки източник да съществува и блокът му да се намира. Връща списък с грешки."""
+    err = []
+    for i, src in enumerate(event.get("sources", [])):
+        where = "sources[%d]" % i
+        if not isinstance(src, dict) or not all(src.get(k) not in (None, "") for k in ("file", "block", "target")):
+            err.append("%s: иска file, block и target" % where)
+            continue
+        path = _src_path(folder, src["file"])
+        try:
+            with open(path, encoding="utf-8") as f:
+                find_block(md_blocks(f.read()), src["block"], int(src.get("index", 0)))
+            _parse_path(src["target"].replace("{key}", "0"))
+        except OSError:
+            err.append("%s: няма файл %s" % (where, src["file"]))
+        except (ValueError, KeyError) as e:
+            err.append("%s: %s" % (where, e))
+    return err

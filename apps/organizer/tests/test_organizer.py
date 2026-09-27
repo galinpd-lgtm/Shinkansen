@@ -35,8 +35,9 @@ def write_event(folder, event, speakers=(), partners=()):
     with open(os.path.join(folder, "event.json"), "w", encoding="utf-8") as f:
         json.dump(event, f, ensure_ascii=False)
     os.makedirs(os.path.join(folder, "data"), exist_ok=True)
-    if not os.path.exists(os.path.join(folder, "assets")):          # кадрите от примера
-        shutil.copytree(os.path.join(EXAMPLE, "assets"), os.path.join(folder, "assets"))
+    for sub in ("assets", "izvori"):                                 # кадрите и източниците от примера
+        if not os.path.exists(os.path.join(folder, sub)):
+            shutil.copytree(os.path.join(EXAMPLE, sub), os.path.join(folder, sub))
     for name, lst in (("lektori", speakers), ("partnyori", partners)):
         with open(os.path.join(folder, "data", name + ".json"), "w", encoding="utf-8") as f:
             json.dump(list(lst), f, ensure_ascii=False)
