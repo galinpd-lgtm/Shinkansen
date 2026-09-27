@@ -192,7 +192,10 @@ class Build(unittest.TestCase):
         self.assertIn("Лектор · Памет и бази данни", page)
         self.assertIn("очаква потвърждение", page)
         self.assertEqual(self.read("organizatori.html").count('class="person empty"'), 4)
-        self.assertIn("Примерна организация ЕООД", self.read("organizatori.html"))
+        org = self.read("organizatori.html")
+        self.assertIn("Примерна организация ЕООД", org)
+        self.assertIn("<h2>Организаторите</h2>", org)
+        self.assertLess(org.index('<p class="kicker">Организатор</p>'), org.index('<p class="kicker">Съорганизатор</p>'))
 
     def test_present_chain_across_pages(self):
         order = organizer.page_order(self.event)

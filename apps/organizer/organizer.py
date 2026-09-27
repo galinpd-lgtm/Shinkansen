@@ -619,13 +619,15 @@ def lektori(event, people, demo):
 
 def organizatori(event, people, demo):
     orgs = event.get("organizers", [])
-    cards_html = "".join('<article class="card org">%s<h3>%s</h3>%s</article>' % (
+    cards_html = "".join('<article class="card org">%s%s<h3>%s</h3>%s</article>' % (
+        '<p class="kicker">%s</p>' % esc(o["role"]) if o.get("role") else "",
         '<img class="org-logo" src="%s" alt="%s">' % (esc(o["logo"]), esc(o["name"])) if o.get("logo") else "",
         '<a href="%s" rel="noopener">%s</a>' % (esc(o["link"]), esc(o["name"])) if o.get("link") else esc(o["name"]),
         '<p>%s</p>' % md(o["text"]) if o.get("text") else "") for o in orgs)
     parts = [hero(event["title"], "Организатори", event.get("people", {}).get("organizers_intro", ""))]
     if orgs:
-        parts.append(block('<h2>Организатор</h2>\n<div class="cards">%s</div>' % cards_html, "", "Организатор"))
+        title = "Организатор" if len(orgs) == 1 else "Организаторите"
+        parts.append(block('<h2>%s</h2>\n<div class="cards">%s</div>' % (title, cards_html), "", title))
     parts.append(block('<h2>Партньори</h2>\n' + people_grid(event, people, "partners"), "people-block", "Партньори"))
     return page(event, "organizatori.html", "Организатори", "\n".join(parts), demo, current="organizatori.html",
                 extra_scripts=("people.js",))

@@ -23,7 +23,7 @@
 | `topics` | `{n ✱, title ✱, slug, question, summary, goals[], concepts[{term,text}], sections[], demo{title,intro,steps[]}, lab{роля:[…]}, takeaways[], source{title,text}}` |
 | `schedule` | дни `{date, label, intro, slots: [{from, to, title, topics:[n], pause}]}`; без час → липса, застъпване → грешка |
 | `people` | `speakers_file` (`data/lektori.json`), `partners_file` (`data/partnyori.json`), `placeholders{speakers,partners}`, `speakers_intro`, `organizers_intro` |
-| `organizers` | `[{name, text, link, logo}]` на „Организатори“ |
+| `organizers` | `[{name, role, text, link, logo}]` на „Организатори“; `role` — „Организатор“, „Съорганизатор“ и т.н., над името |
 | `privacy` | `{title, intro, blocks[]}` → `privacy.html` (блоковете са като `home.sections`) |
 | `forms` | `{id, slug, title, intro, table, fields[]}`; slug не може да е име на страница или `tema-…` |
 | `forms[].fields` | `{id, type, label, required, personal, help, group, options[] / options_from:"topics", other, other_label, max, max_length, required_if[]}`; `personal: true` (имейлът и съгласието — винаги) пази полето в отделната таблица `_kontakt` |
