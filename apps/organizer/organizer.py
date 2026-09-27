@@ -7,6 +7,7 @@
     python3 organizer.py fill ПАПКА [--dry-run]                 # съдържание от sources (Markdown + JSON блокове)
     python3 organizer.py package САЙТ ПАПКА [--prev ПРЕДИШЕН]   # за качване: tgz, SHA-256, разлика
     python3 organizer.py qa ПАПКА ОТЧЕТ [--no-shots]            # A5 с една команда
+    python3 organizer.py deploy ПАКЕТ.tgz --config deploy.json [--go]   # A6; без --go само план
 
 ПАПКА съдържа event.json, data/ (лектори и партньори — по един запис на човек) и по желание
 assets/ (лого, локални шрифтове), което се копира в изхода. Истинските събития стоят извън
@@ -980,6 +981,12 @@ def main(argv=None):
     fl = sub.add_parser("fill", help="влива JSON блоковете от sources в event.json и показва разликата")
     fl.add_argument("folder")
     fl.add_argument("--dry-run", action="store_true", help="само разликата, без запис")
+    dp = sub.add_parser("deploy", help="качване в cPanel по A6; без --go е само план")
+    dp.add_argument("package")
+    dp.add_argument("--config", required=True, help="deploy.json извън репото (адрес, потребител, token_file, папка)")
+    dp.add_argument("--go", action="store_true", help="наистина качва (след „go“ от човек)")
+    dp.add_argument("--htaccess-ok", action="store_true", help="правилата в .htaccess на public_html са прочетени")
+    dp.add_argument("--no-test-answer", action="store_true", help="без тестов отговор след качването")
     q = sub.add_parser("qa", help="проверка A5: сглобяване, въпросниците на живо (PHP + SQLite), 360/1440 px")
     q.add_argument("folder")
     q.add_argument("report")
@@ -1019,6 +1026,16 @@ def main(argv=None):
         print("%s: %d нови · %d сменени · %d махнати" % ("разлика (без запис)" if args.dry_run else "записано",
                                                         len(d["added"]), len(d["changed"]), len(d["removed"])))
         return 0
+    if args.cmd == "deploy":
+        import deploy as dep
+        try:
+            cfg = dep.load_config(args.config)
+        except (OSError, ValueError) as e:
+            print("deploy: %s" % e, file=sys.stderr)
+            return 1
+        steps = dep.deploy(args.package, cfg, go=args.go, htaccess_ok=args.htaccess_ok,
+                           test_answer=not args.no_test_answer)
+        return 1 if any(ok is False for _, ok, _ in steps) else 0
     if args.cmd == "qa":
         import ops
         path, failed = ops.qa(args.folder, args.report, shots=not args.no_shots, build=build)
