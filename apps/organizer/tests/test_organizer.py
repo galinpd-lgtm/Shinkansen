@@ -179,6 +179,7 @@ class Build(unittest.TestCase):
                                          "<h2>Какво отнасяш вкъщи</h2>")]
         self.assertEqual(order, sorted(order))
         self.assertIn('class="stat"><b>до 10</b>', self.read("index.html"))
+        self.assertIn('<p class="hero-note">Подгряващо събитие за <a href="https://example.org/">', self.read("index.html"))
         one = self.read("tema-01-parvi-razgovor.html")
         self.assertIn('class="block source"', one)
         self.assertIn("<dt>Роля</dt>", one)

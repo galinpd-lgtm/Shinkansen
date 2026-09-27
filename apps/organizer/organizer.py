@@ -478,9 +478,11 @@ def hero(kicker, title, lead="", extra=""):
 def home(event, demo):
     place = event.get("place", {})
     top = ('<p class="kicker">%s · %s</p>\n<h1>%s</h1>\n<p class="lead">%s</p>\n'
-           '<p class="meta">%s</p>\n<p class="actions">%s <a class="btn ghost" href="programa.html">Програмата</a></p>') % (
+           '<p class="meta">%s</p>\n%s<p class="actions">%s <a class="btn ghost" href="programa.html">Програмата</a></p>') % (
         esc(date_label(event)), esc(place.get("name", "")), esc(event["title"]), md(event.get("tagline", "")),
-        esc(" · ".join(x for x in (place.get("seats"), place.get("note")) if x)), cta_button(event))
+        esc(" · ".join(x for x in (place.get("seats"), place.get("note")) if x)),
+        '<p class="hero-note">%s</p>\n' % md(event["home"]["hero_note"]) if event.get("home", {}).get("hero_note") else "",
+        cta_button(event))
     parts = [block(top, "hero", event["title"])]
     stats = event.get("home", {}).get("stats", [])
     if stats:

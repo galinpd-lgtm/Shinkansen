@@ -29,6 +29,8 @@ p{margin:0 0 1em}
 .kicker{font-family:var(--font-mono);font-weight:600;font-size:.9rem;color:var(--accent-text);margin-bottom:1em}
 .lead{font-size:clamp(1.1rem,2vw,1.35rem);max-width:46em}
 .meta{opacity:.75}
+.hero-note{display:inline-block;margin:.4em 0 0;padding:.5em .9em;border-radius:12px;border:1px solid var(--accent);font-weight:600}
+.hero-note a{color:inherit}
 .actions{display:flex;flex-wrap:wrap;gap:.6em;margin-top:1.5em}
 .btn{display:inline-block;background:var(--accent);color:var(--on-accent);border:2px solid var(--accent);border-radius:999px;padding:.7em 1.4em;font:700 1rem var(--font-body);text-decoration:none;cursor:pointer}
 .btn.ghost{background:transparent;color:inherit;border-color:currentColor}

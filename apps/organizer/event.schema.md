@@ -15,6 +15,7 @@
 | `publish` | `indexable` (false до „go“), `base_url`, `forbid_text` (низове), `forbid_regex` (изрази, напр. `(?<!Е)ООД`), `pending_marker` (по подразбиране `[ЧАКА`) |
 | `server` | `config_file` — пътят на config спрямо папката над `public_html` (по подразбиране `.organizer/<slug>.php`); `rate_limit_per_hour` (10); `rate_table` |
 | `cta` | `label` и `form` — id на въпросника, към който води бутонът |
+| `home.hero_note` | един ред под заглавието, напр. „Подгряващо събитие за [конференция](https://…)“ |
 | `home.stats` | `[{value, label}]` — „три числа“ |
 | `home.sections` | раздели `{title, intro, items[{title,text}], table{head[], rows[[]]}, list[]}` |
 | `program_intro` · `schedule_intro` | увод на „Програмата“ и „Разписание“ |
