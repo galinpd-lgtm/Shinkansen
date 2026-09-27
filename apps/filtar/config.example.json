@@ -7,6 +7,7 @@
   "user_agent": "KAGAMI-filtar/0.1 (+https://kagami.bg/radar/)",
   "taymaut_s": 30,
   "fetch_interval_min": 15,
+  "ne_otgovarya_sled_dni": 3,
   "sloy1": {"min_znaci": 100, "tipove": ["xml", "rss", "atom", "html", "ruchno"]},
   "sloy2": {"prag_pochti": 0.95, "dni": 30},
   "sloy3": {
@@ -23,7 +24,8 @@
       "model": "nemotron-safety",
       "lokalen_url": "http://127.0.0.1:11435",
       "oblachen_url": "",
-      "kluch": ""
+      "kluch": "",
+      "dnevna_granica": 100
     }
   },
   "sloy4": {"barz_prag": 3.0},

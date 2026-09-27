@@ -10,6 +10,5 @@ Type=oneshot
 WorkingDirectory=%h/Shinkansen/apps/filtar
 Environment=FILTAR_CONFIG=%h/.config/filtar/config.json
 Environment=SHINKANSEN_RUNS=%h/.local/state/shinkansen/runs
+# 0 = събран е поне един източник (неотговорилите са в дневника); 1 = не отговори нито един
 ExecStart=/usr/bin/python3 -m filtar sabiray
-# 4 = част от източниците не отговориха (другите са събрани) — не е повреда на услугата
-SuccessExitStatus=4

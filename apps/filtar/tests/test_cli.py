@@ -26,9 +26,11 @@ class Hod:
         self.izvori = os.path.join(p.d, "izvori.json")
         pishi_json(self.izvori, IZVORI)
 
+    sega = SEGA
+
     def __call__(self, *argv, env=None, mrezha=None):
         out, err = io.StringIO(), io.StringIO()
-        obshti = ["--config", CFG, "--danni", self.p.danni, "--sega", SEGA.isoformat()]
+        obshti = ["--config", CFG, "--danni", self.p.danni, "--sega", self.sega.isoformat()]
         argv = [argv[0]] + obshti + list(argv[1:])
         with mock.patch.object(sabirach, "http_get", mrezha or FalshivaMrezha()), \
                 mock.patch.dict(os.environ, env or {}), \
@@ -73,18 +75,44 @@ class TestKomandi(unittest.TestCase):
             kod, out, _ = h("statistika", "--json")
             self.assertIn("po_sloy", json.loads(out))
 
-    def test_sabiray_chastichno_4_vsichko_1(self):
+    def test_sabiray_chastichno_0_vsichko_1(self):
         with Papka() as p:
             h = Hod(p)
             mrezha = FalshivaMrezha({"https://example.net/blog/feed": (500, "", None, {}, b"")})
-            kod, out, _ = h("sabiray", "--izvori", h.izvori, mrezha=mrezha)
-            self.assertEqual(kod, 4)
-            self.assertIn("грешка", out)
+            kod, out, err = h("sabiray", "--izvori", h.izvori, mrezha=mrezha)
+            self.assertEqual(kod, 0)  # поне един е събран; 4 е само за „заето/горещо“
+            self.assertIn("предупреждение: не отговориха 1 от 3", err)
+            self.assertIn("primer-obshtnost", err)
+            red = p.b.execute("SELECT * FROM firewall_log WHERE reshenie='НЕ ОТГОВАРЯ'").fetchone()
+            self.assertEqual(red["izvor"], "primer-obshtnost")
+            self.assertIn("500", red["prichina"])
         with Papka() as p:
             h = Hod(p)
             mrezha = FalshivaMrezha({u["url"]: (500, "", None, {}, b"") for u in IZVORI})
             kod, _, _ = h("sabiray", "--izvori", h.izvori, mrezha=mrezha)
             self.assertEqual(kod, 1)
+
+    def test_ne_otgovarya_3_dni(self):
+        from datetime import timedelta
+        with Papka() as p:
+            h = Hod(p)
+            pada = FalshivaMrezha({"https://example.net/blog/feed": (500, "", None, {}, b"")})
+            for chasa in (0, 30, 60):  # три опита за 2.5 дни
+                h.sega = SEGA + timedelta(hours=chasa)
+                h("sabiray", "--izvori", h.izvori, mrezha=pada)
+            _, out, _ = h("statistika")
+            self.assertNotIn("⚠ НЕ ОТГОВАРЯ", out)  # още няма 3 дни
+            h.sega = SEGA + timedelta(days=3)
+            h("sabiray", "--izvori", h.izvori, mrezha=pada)
+            _, out, _ = h("statistika")
+            self.assertIn("⚠ НЕ ОТГОВАРЯ", out)
+            self.assertIn("primer-obshtnost", out.split("Не отговарят")[1])
+            # не е изключен сам: пита се и при следващия ход, и щом отговори — знакът изчезва
+            h.sega = SEGA + timedelta(days=3, hours=1)
+            kod, izh, _ = h("sabiray", "--izvori", h.izvori)
+            self.assertIn("primer-obshtnost", izh)
+            _, out, _ = h("statistika")
+            self.assertNotIn("⚠ НЕ ОТГОВАРЯ", out)
 
     def test_otkazano_izvlichane_ne_e_greshka(self):
         with Papka() as p:

@@ -3,8 +3,11 @@
 Два режима, едно и също API (Ollama /api/chat), различават се само адресът и ключът:
   lokalen  — Ollama на GX10 (lokalen_url);
   oblachen — облакът на Ollama (oblachen_url + kluch; ключът е само в частния config.json на GX10).
-Вика се само през топлинната врата на Z7. Мери само вредност — не достоверност и не полезност.
-Без ключ в облачен режим слоят се пропуска с ред в дневника.
+Мери само вредност — не достоверност и не полезност.
+
+Локалният режим минава през топлинната врата на Z7 (пази GX10). Облачният — не: не натоварва GX10, но има
+дневен таван на заявките (dnevna_granica) заради безплатния ключ. В облачен режим без ключ, при изчерпан
+таван или при грешка слоят се пропуска с ред в дневника и статията продължава нататък.
 """
 import json
 
@@ -31,9 +34,17 @@ class Klasifikator:
             self.url, self.kluch = vcfg.get("oblachen_url"), vcfg.get("kluch")
         else:
             self.url = self.kluch = None
-        self.vrata = vrata if vrata is not None else Vrata(gate_url)
+        self.granica = vcfg.get("dnevna_granica")
+        if self.rezhim == "lokalen":
+            self.vrata = vrata if vrata is not None else Vrata(gate_url)
+        else:
+            self.vrata = None  # облакът не натоварва GX10 — пази го дневният таван
         self._post = post or http_post
         self.vikaniya = 0
+
+    @property
+    def oblachen(self):
+        return self.rezhim == "oblachen"
 
     @property
     def vklyuchen(self):
@@ -54,7 +65,8 @@ class Klasifikator:
         zaglavki = {"Content-Type": "application/json"}
         if self.kluch:
             zaglavki["Authorization"] = "Bearer " + self.kluch
-        self.vrata.proveri()
+        if self.vrata is not None:
+            self.vrata.proveri()
         self.vikaniya += 1
         try:
             status, tyalo = self._post(self.url.rstrip("/") + "/api/chat", body, zaglavki, 60)

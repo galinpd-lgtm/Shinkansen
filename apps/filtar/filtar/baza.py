@@ -31,7 +31,12 @@ CREATE TABLE IF NOT EXISTS izvori (
     id TEXT PRIMARY KEY,
     ime TEXT, vid TEXT,
     rep_score REAL NOT NULL,
-    preizchislena TEXT, posleden_opit TEXT, posledno_sastoyanie TEXT
+    preizchislena TEXT, posleden_opit TEXT, posledno_sastoyanie TEXT,
+    ne_otgovarya_ot TEXT            -- начало на поредицата от неуспешни опити; NULL, щом отговори
+);
+CREATE TABLE IF NOT EXISTS broyachi (   -- дневни броячи, напр. заявки към облачния класификатор
+    den TEXT NOT NULL, kluch TEXT NOT NULL, broy INTEGER NOT NULL,
+    PRIMARY KEY (den, kluch)
 );
 """
 
@@ -41,7 +46,20 @@ def otvori(papka):
     b = sqlite3.connect(os.path.join(papka, "filtar.sqlite"))
     b.row_factory = sqlite3.Row
     b.executescript(SHEMA)
+    koloni = {r["name"] for r in b.execute("PRAGMA table_info(izvori)")}
+    if "ne_otgovarya_ot" not in koloni:  # база от по-ранна версия
+        b.execute("ALTER TABLE izvori ADD COLUMN ne_otgovarya_ot TEXT")
     return b
+
+
+def broyach(b, den, kluch):
+    r = b.execute("SELECT broy FROM broyachi WHERE den=? AND kluch=?", (den, kluch)).fetchone()
+    return r["broy"] if r else 0
+
+
+def uveli(b, den, kluch):
+    b.execute("INSERT INTO broyachi (den, kluch, broy) VALUES (?,?,1) "
+              "ON CONFLICT(den, kluch) DO UPDATE SET broy=broy+1", (den, kluch))
 
 
 def log(b, vreme, sloy, reshenie, prichina, zapis_id=None, izvor=None, ocenka=None):

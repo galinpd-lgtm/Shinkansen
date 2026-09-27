@@ -1,11 +1,10 @@
 """python -m filtar sabiray | filtriray | chernova | odobri | izdanie | statistika
 
 Кодове на изход:
-  0 готово
-  4 sabiray: част от източниците не отговориха (другите са събрани);
-    filtriray/chernova: не е безопасно сега (вратата на Z7) — моделът не е викан, нищо не се губи,
-    следващото пускане продължава оттам
-  1 грешка · 2 грешна употреба
+  0 готово (sabiray: събран е поне един източник; неотговорилите са в предупреждение и в дневника)
+  4 само „заето/горещо, опитай по-късно“: вратата на Z7 спря filtriray/chernova — моделът не е викан,
+    нищо не се губи, следващото пускане продължава оттам
+  1 грешка (sabiray: не е отговорил нито един източник) · 2 грешна употреба
 """
 import argparse
 import json
@@ -114,9 +113,12 @@ def izpalni(a):
             print("Нови записи: %d · пропуснати (рано е): %d · с грешка: %d" % (
                 o["novi"], o["propusnati"], len(o["greshki"])))
             opitani = len(o["izvori"])
-            greshni = sum(1 for _, s in o["izvori"] if s.startswith("грешка"))
-            kod = IZHOD_GRESHKA if opitani and greshni == opitani else (IZHOD_4 if o["greshki"] else IZHOD_OK)
-            return kod, "нови %d · грешки %d · exit %d" % (o["novi"], len(o["greshki"]), kod)
+            greshni = [iid for iid, s in o["izvori"] if s.startswith("грешка")]
+            kod = IZHOD_GRESHKA if opitani and len(greshni) == opitani else IZHOD_OK
+            if greshni:
+                print("предупреждение: не отговориха %d от %d източника: %s" % (len(greshni), opitani, ", ".join(greshni)),
+                      file=sys.stderr)
+            return kod, "нови %d · не отговориха %d · exit %d" % (o["novi"], len(greshni), kod)
 
         if a.komanda == "filtriray":
             model, kl = _model(cfg, a.bez_model)
@@ -151,7 +153,7 @@ def izpalni(a):
             return IZHOD_OK, "издание %d дни · exit 0" % o["dni"]
 
         if a.komanda == "statistika":
-            s = statistika.statistika(b)
+            s = statistika.statistika(b, sega, cfg.get("ne_otgovarya_sled_dni", 3))
             print(json.dumps(s, ensure_ascii=False, indent=2) if a.json else statistika.otchet(s))
             return IZHOD_OK, "статистика · exit 0"
     finally:

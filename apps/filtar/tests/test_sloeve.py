@@ -2,12 +2,14 @@
 import json
 import unittest
 from datetime import timedelta
+from unittest import mock
 
 from obshto import IZVORI, SEGA, FalshivaMrezha, FalshivModel, Otvorena, Papka, cfg, dcfg
 
 from filtar import baza, config, sabirach, sloeve
 from filtar.dov import VrataNeBezopasno
 from filtar.vreden import Klasifikator
+import doverie.vrata as dvrata
 
 ORGS = config.cheti_json("organizacii.example.json")
 DYLAG = ("Община Примерово обяви нова програма за подкрепа на малки фирми, съобщи Николай Примеров, кмет на Примерово. "
@@ -162,6 +164,54 @@ class TestKlasifikator(unittest.TestCase):
             self.assertNotEqual(reshenie(p.b, zid)["sloy"], 3)
             red = p.b.execute("SELECT prichina FROM firewall_log WHERE zapis_id=? AND sloy=3", (zid,)).fetchone()
             self.assertIn("няма ключ", red["prichina"])
+
+    def test_oblak_bez_vratata(self):
+        v = dict(cfg()["sloy3"]["vreden"], rezhim="oblachen", oblachen_url="https://oblak.example.org", kluch="k")
+        post = FalshivPost('{"opasno": false}')
+        kl = Klasifikator(v, "http://g", post=post)
+        self.assertIsNone(kl.vrata)
+        with mock.patch.object(dvrata, "http_get", lambda *a: (200, "busy")):  # горещо — облакът пак работи
+            self.assertEqual(kl.e_opasno("текст"), (False, ""))
+
+    def test_oblak_dneven_tavan(self):
+        with Papka() as p:
+            v = dict(cfg()["sloy3"]["vreden"], rezhim="oblachen", oblachen_url="https://oblak.example.org",
+                     kluch="k", dnevna_granica=2)
+            post = FalshivPost('{"opasno": false}')
+            kl = Klasifikator(v, None, post=post)
+            ids = [vkarai(p.b, url="https://example.org/%d" % i, tekst=DYLAG.replace("Изречение", "Ред%d" % i))
+                   for i in range(4)]
+            filtr(p, klasifikator=kl)
+            self.assertEqual(len(post.vikaniya), 2)
+            for zid in ids:  # всички продължават нататък
+                self.assertNotEqual(reshenie(p.b, zid)["sloy"], 3)
+            red = p.b.execute("SELECT prichina FROM firewall_log WHERE zapis_id=? AND sloy=3", (ids[3],)).fetchone()
+            self.assertIn("таван", red["prichina"])
+            # на следващия ден таванът е нов
+            post.vikaniya.clear()
+            zid = vkarai(p.b, url="https://example.org/utre", tekst=DYLAG.replace("Изречение", "Утре"))
+            sloeve.filtriray(p.b, cfg(), dcfg(), SEGA + timedelta(days=1), organizacii=ORGS, klasifikator=kl)
+            self.assertEqual(len(post.vikaniya), 1)
+
+    def test_oblak_greshka_ne_spira_statiyata(self):
+        with Papka() as p:
+            v = dict(cfg()["sloy3"]["vreden"], rezhim="oblachen", oblachen_url="https://oblak.example.org", kluch="k")
+            kl = Klasifikator(v, None, post=FalshivPost("{}", status=429))
+            zid = vkarai(p.b)
+            filtr(p, klasifikator=kl)
+            self.assertGreater(reshenie(p.b, zid)["sloy"], 3)  # статията продължи нататък
+            red = p.b.execute("SELECT prichina FROM firewall_log WHERE zapis_id=? AND sloy=3", (zid,)).fetchone()
+            self.assertIn("429", red["prichina"])
+
+    def test_lokalen_zad_vratata(self):
+        v = dict(cfg()["sloy3"]["vreden"], rezhim="lokalen")
+        post = FalshivPost("{}")
+        kl = Klasifikator(v, "http://g", post=post)
+        self.assertIsNotNone(kl.vrata)
+        with mock.patch.object(dvrata, "http_get", lambda *a: (200, "busy")):
+            with self.assertRaises(VrataNeBezopasno):
+                kl.e_opasno("текст")
+        self.assertEqual(post.vikaniya, [])
 
     def test_vratata_spira(self):
         v = dict(cfg()["sloy3"]["vreden"], rezhim="lokalen")

@@ -323,7 +323,8 @@ def sabiray_ruchno(b, papka, sega):
 
 
 def sabiray(b, cfg, izvori, sega, get=None, vhod=None):
-    """Един ход. → {"novi", "izvori": [(id, състояние)], "greshki": [...], "propusnati": брой}."""
+    """Един ход. → {"novi", "izvori": [(id, състояние)], "greshki", "otkazani", "propusnati"}.
+    Неотговорил източник получава ред „НЕ ОТГОВАРЯ“ в дневника и продължава да се пита при следващия ход."""
     get = get or http_get
     otchet = {"novi": 0, "izvori": [], "greshki": [], "otkazani": [], "propusnati": 0}
     for izv in izvori:
@@ -342,8 +343,15 @@ def sabiray(b, cfg, izvori, sega, get=None, vhod=None):
         except GreshkaIzvor as e:
             sast = "грешка: %s" % e
             otchet["greshki"].append("%s: %s" % (izv["id"], e))
-        b.execute("UPDATE izvori SET posleden_opit=?, posledno_sastoyanie=? WHERE id=?",
-                  (sega.isoformat(timespec="seconds"), sast, izv["id"]))
+            baza.log(b, sega.isoformat(timespec="seconds"), 0, "НЕ ОТГОВАРЯ", str(e), None, izv["id"])
+        vreme = sega.isoformat(timespec="seconds")
+        if sast.startswith("грешка"):
+            # поредицата започва от първия неуспех; източникът не се изключва сам
+            b.execute("UPDATE izvori SET posleden_opit=?, posledno_sastoyanie=?, "
+                      "ne_otgovarya_ot=COALESCE(ne_otgovarya_ot, ?) WHERE id=?", (vreme, sast, vreme, izv["id"]))
+        else:
+            b.execute("UPDATE izvori SET posleden_opit=?, posledno_sastoyanie=?, ne_otgovarya_ot=NULL WHERE id=?",
+                      (vreme, sast, izv["id"]))
         otchet["izvori"].append((izv["id"], sast))
     if vhod and os.path.isdir(vhod):
         n, gr = sabiray_ruchno(b, vhod, sega)

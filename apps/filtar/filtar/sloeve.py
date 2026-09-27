@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timedelta
 
 from . import baza
-from .dov import GreshkaSadarzhanie, dumi, ocenka, osi, pohvati
+from .dov import GreshkaModel, GreshkaSadarzhanie, dumi, ocenka, osi, pohvati
 from .sabirach import domain
 from .vreden import Propusni
 
@@ -66,7 +66,36 @@ def dyal_kirilica(t):
     return (len([x for x in bukvi if _KIRILICA.match(x)]) / len(bukvi)) if bukvi else 0.0
 
 
-def sloy3(z, cfg, klasifikator, belezhki):
+def _klasificiray(b, kl, tekst, sega, belezhki):
+    """→ (опасно, категория) или None, ако слоят е пропуснат за този запис (ред в дневника)."""
+    den = sega.date().isoformat()
+    if kl.oblachen:
+        if kl.granica is not None and baza.broyach(b, den, "vreden_oblak") >= kl.granica:
+            belezhki.append((3, "класификатор", "дневният таван от %d заявки към облака е изчерпан — слоят е "
+                                                "пропуснат" % kl.granica))
+            return None
+        try:
+            kl.proveri_nastroyka()
+        except Propusni as e:
+            belezhki.append((3, "класификатор", str(e)))
+            return None
+        baza.uveli(b, den, "vreden_oblak")
+        b.commit()  # заявката се брои, дори записът да не завърши в този ход
+        try:
+            return kl.e_opasno(tekst)
+        except (GreshkaModel, Propusni) as e:  # облакът: грешката не спира статията
+            belezhki.append((3, "класификатор", "%s — слоят е пропуснат" % e))
+            return None
+    try:
+        return kl.e_opasno(tekst)
+    except Propusni as e:
+        belezhki.append((3, "класификатор", str(e)))
+    except GreshkaSadarzhanie as e:
+        belezhki.append((3, "класификатор", "%s — слоят е пропуснат за този запис" % e))
+    return None
+
+
+def sloy3(b, z, cfg, klasifikator, belezhki, sega):
     c = cfg["sloy3"]
     oficialen = z["izvor_vid"] in c["vidove_oficialni"]
     prag = c["min_dumi_oficialen"] if oficialen else c["min_dumi"]
@@ -86,14 +115,10 @@ def sloy3(z, cfg, klasifikator, belezhki):
         if m.lower() in malki or m.lower() in zagl:
             raise Krai(3, OTKAZ, "реклама или PR („%s“)" % m)
     if klasifikator is not None and klasifikator.vklyuchen:
-        try:
-            opasno, kat = klasifikator.e_opasno(z["tekst"])
-        except Propusni as e:
-            belezhki.append((3, "класификатор", str(e)))
+        otg = _klasificiray(b, klasifikator, z["tekst"], sega, belezhki)
+        if otg is None:
             return
-        except GreshkaSadarzhanie as e:
-            belezhki.append((3, "класификатор", "%s — слоят е пропуснат за този запис" % e))
-            return
+        opasno, kat = otg
         if opasno:
             raise Krai(3, KARANTINA, "класификаторът за вредно съдържание: опасно%s" % (" (%s)" % kat if kat else ""))
 
@@ -192,7 +217,7 @@ def obraboti(b, z, cfg, dcfg, sega, model=None, klasifikator=None, organizacii=N
         sloy1(z, cfg)
         sh = sloy2(b, z, cfg, sega)
         pol["shingli"] = sorted(sh)
-        sloy3(z, cfg, klasifikator, belezhki)
+        sloy3(b, z, cfg, klasifikator, belezhki, sega)
 
         izv = baza.izvor(b, z["izvor"], z["izvor_ime"], z["izvor_vid"], cfg["sloy5"]["nachalna"])
         rep = izv["rep_score"]
