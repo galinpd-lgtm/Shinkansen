@@ -61,7 +61,7 @@ function organizer_pdo(array $cfg): PDO
 
 function organizer_safe_table(string $t): string
 {
-    if (!preg_match('/^[a-z][a-z0-9_]{0,50}$/', $t)) {
+    if (!preg_match('/^[a-z][a-z0-9_]{0,62}$/', $t)) {
         throw new RuntimeException('невалидно име на таблица');
     }
     return $t;
@@ -76,6 +76,8 @@ function organizer_auto_create(PDO $pdo, array $cfg, array $spec): void
     foreach ($spec['forms'] as $f) {
         $t = organizer_safe_table($f['table']);
         $pdo->exec("CREATE TABLE IF NOT EXISTS `$t` (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, answers TEXT NOT NULL)");
+        $k = organizer_safe_table($f['contact_table']);
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `$k` (response_id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL)");
     }
     $r = organizer_safe_table($spec['rate_table']);
     $pdo->exec("CREATE TABLE IF NOT EXISTS `$r` (ip_hash TEXT NOT NULL, created_at TEXT NOT NULL)");
@@ -212,6 +214,24 @@ function organizer_validate(array $form, array $in): array
         }
     }
     return [$out, $err];
+}
+
+// Разделя проверените отговори на общи и лични (имейл, съгласие, полета с personal) — пазят се в две таблици.
+function organizer_split(array $form, array $answers): array
+{
+    $general = [];
+    $personal = [];
+    foreach ($form['fields'] as $f) {
+        if (!array_key_exists($f['id'], $answers)) {
+            continue;
+        }
+        if (!empty($f['personal'])) {
+            $personal[$f['id']] = $answers[$f['id']];
+        } else {
+            $general[$f['id']] = $answers[$f['id']];
+        }
+    }
+    return [$general, $personal];
 }
 
 // Клетка за CSV: защита от формули в Excel (=, +, -, @, таб, CR в началото).

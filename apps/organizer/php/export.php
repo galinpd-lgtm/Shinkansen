@@ -66,9 +66,20 @@ foreach ($form['fields'] as $f) {
 }
 fputcsv($out, $head);
 $table = organizer_safe_table($form['table']);
+$contacts = [];
+if (array_filter($form['fields'], function ($f) { return !empty($f['personal']); })) {
+    try {
+        $contact = organizer_safe_table($form['contact_table']);
+        foreach ($pdo->query("SELECT response_id, data FROM `$contact`") as $c) {
+            $contacts[(int)$c['response_id']] = json_decode($c['data'], true) ?: [];
+        }
+    } catch (Throwable $e) {
+        error_log('organizer export: ' . $e->getMessage());   // няма таблица _kontakt — пусни sql/schema.sql
+    }
+}
 $st = $pdo->query("SELECT id, created_at, answers FROM `$table` ORDER BY id");
 foreach ($st as $r) {
-    $a = json_decode($r['answers'], true) ?: [];
+    $a = (json_decode($r['answers'], true) ?: []) + ($contacts[(int)$r['id']] ?? []);
     $row = [$r['id'], $r['created_at']];
     foreach ($form['fields'] as $f) {
         $row[] = organizer_csv_cell($a[$f['id']] ?? '');

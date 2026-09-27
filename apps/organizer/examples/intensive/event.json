@@ -366,7 +366,8 @@
           "id": "ime",
           "type": "text",
           "label": "Име (по желание)",
-          "max_length": 120
+          "max_length": 120,
+          "personal": true
         },
         {
           "id": "email",
@@ -495,7 +496,8 @@
           "label": "Име",
           "required": true,
           "max_length": 120,
-          "group": "Г · Контакт"
+          "group": "Г · Контакт",
+          "personal": true
         },
         {
           "id": "email",

@@ -97,6 +97,16 @@ class Check(unittest.TestCase):
         self.assertEqual([w[0] for w in waits], ["event.place.note", "event.topics[0].source.text",
                                                  "event.privacy.blocks[0].list[1]"])
 
+    def test_name_field_without_personal_is_flagged(self):
+        event, people = example()
+        event = copy.deepcopy(event)
+        event["forms"][0]["fields"][7].pop("personal")
+        _, todo = organizer.check(event, people)
+        self.assertTrue(any("zapis/ime" in t and "personal" in t for t in todo), todo)
+        spec = organizer.forms_spec(example()[0])
+        flags = {f["id"]: f["personal"] for f in spec["forms"]["zapis"]["fields"]}
+        self.assertEqual((flags["ime"], flags["email"], flags["saglasie"], flags["rolya"]), (True, True, True, False))
+
     def test_required_if_points_to_missing_field(self):
         self.bad(lambda e, p: e["forms"][0]["fields"][-1].update(required_if=["nyama"]), "required_if")
 
@@ -192,7 +202,8 @@ class Build(unittest.TestCase):
 
     def test_schema_sql_one_table_per_form(self):
         sql = self.read("sql/schema.sql")
-        for t in ("primer_intenziv_zapis", "primer_intenziv_tehnika", "primer_intenziv_rate"):
+        for t in ("primer_intenziv_zapis", "primer_intenziv_zapis_kontakt", "primer_intenziv_tehnika",
+                  "primer_intenziv_tehnika_kontakt", "primer_intenziv_rate"):
             self.assertIn("CREATE TABLE IF NOT EXISTS `%s`" % t, sql)
         self.assertIn("Require all denied", self.read("sql/.htaccess"))
 
@@ -399,8 +410,27 @@ class LivePhp(unittest.TestCase):
         self.assertEqual(rec["Кои теми те интересуват най-много?"], "2. Памет")
         self.assertEqual(rec["Какво искаш да можеш след интензива?"], "'=CMD()")
         self.assertNotIn("не се пази", text)
+        self.assertEqual(rec["Име (по желание)"], "Ива")            # износът съединява личното обратно
 
-    def test_4_rate_limit(self):
+    def test_5_personal_fields_stored_apart(self):
+        import sqlite3
+        ok = {"_form": "zapis", "rolya": "Фотограф", "opit": "Никакъв", "ime": "Петя", "email": "p@example.org",
+              "saglasie": "1", "_t": "9"}
+        self.assertEqual(self.req("api/submit.php", ok)[0], 200)
+        anon = {"_form": "zapis", "rolya": "Дизайнер", "opit": "Никакъв", "_t": "9"}
+        self.assertEqual(self.req("api/submit.php", anon)[0], 200)
+        db = sqlite3.connect(os.path.join(self.tmp.name, "db.sqlite"))
+        answers = [json.loads(r[0]) for r in db.execute("SELECT answers FROM primer_intenziv_zapis")]
+        self.assertTrue(answers)
+        for a in answers:
+            self.assertFalse({"ime", "email", "saglasie"} & set(a), a)
+        contacts = {r[0]: json.loads(r[1]) for r in db.execute("SELECT response_id, data FROM primer_intenziv_zapis_kontakt")}
+        petya = [c for c in contacts.values() if c.get("ime") == "Петя"]
+        self.assertEqual(petya, [{"ime": "Петя", "email": "p@example.org", "saglasie": True}])
+        last_anon = db.execute("SELECT id FROM primer_intenziv_zapis ORDER BY id DESC LIMIT 1").fetchone()[0]
+        self.assertNotIn(last_anon, contacts)                      # без лични данни няма ред в _kontakt
+
+    def test_9_rate_limit(self):
         ok = {"_form": "tehnika", "mashina": "Свой лаптоп", "problem": "x", "lichni_danni": "Не",
               "ime": "А", "email": "a@example.org", "saglasie": "1", "_t": "9"}
         codes = [self.req("api/submit.php", ok)[0] for _ in range(12)]

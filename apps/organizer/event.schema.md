@@ -25,7 +25,7 @@
 | `organizers` | `[{name, text, link, logo}]` на „Организатори“ |
 | `privacy` | `{title, intro, blocks[]}` → `privacy.html` (блоковете са като `home.sections`) |
 | `forms` | `{id, slug, title, intro, table, fields[]}`; slug не може да е име на страница или `tema-…` |
-| `forms[].fields` | `{id, type, label, required, help, group, options[] / options_from:"topics", other, other_label, max, max_length, required_if[]}` |
+| `forms[].fields` | `{id, type, label, required, personal, help, group, options[] / options_from:"topics", other, other_label, max, max_length, required_if[]}`; `personal: true` (имейлът и съгласието — винаги) пази полето в отделната таблица `_kontakt` |
 
 Страницата на тема е `tema-01-<slug>.html`. Блоковете вървят в този ред: въпросът, какво ще можеш,
 понятията, своите раздели, демото на живо, лабораторията, какво отнасяш вкъщи, изходникът.

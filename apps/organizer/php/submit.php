@@ -79,9 +79,22 @@ try {
         reply(false, 429, 'Твърде много изпращания от този адрес. Опитай пак след час.');
     }
     $table = organizer_safe_table($form['table']);
+    [$general, $personal] = organizer_split($form, $answers);
+    $now = gmdate('Y-m-d H:i:s');
+    $pdo->beginTransaction();
     $st = $pdo->prepare("INSERT INTO `$table` (created_at, answers) VALUES (?, ?)");
-    $st->execute([gmdate('Y-m-d H:i:s'), json_encode($answers, JSON_UNESCAPED_UNICODE)]);
+    $st->execute([$now, json_encode((object)$general, JSON_UNESCAPED_UNICODE)]);
+    if ($personal) {
+        $id = (int)$pdo->lastInsertId();
+        $contact = organizer_safe_table($form['contact_table']);
+        $pdo->prepare("INSERT INTO `$contact` (response_id, created_at, data) VALUES (?, ?, ?)")
+            ->execute([$id, $now, json_encode($personal, JSON_UNESCAPED_UNICODE)]);
+    }
+    $pdo->commit();
 } catch (Throwable $e) {
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     error_log('organizer: ' . $e->getMessage());
     reply(false, 500, 'Не успях да запиша отговорите. Опитай пак след малко.');
 }

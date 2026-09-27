@@ -250,6 +250,11 @@ def check(event, people):
             if fld.get("type") in ("single", "multi") and not resolve_options(fld, event):
                 err.append("%s: няма опции" % fw)
         for fld in f.get("fields", []):
+            looks = re.search(r"(?i)^(ime|name|familiya|telefon|phone|adres)|\b(име|фамилия|телефон|адрес)\b",
+                              "%s %s" % (fld.get("id", ""), fld.get("label", "")))
+            if looks and fld.get("type") in ("text", "textarea") and not is_personal(fld):
+                todo.append("%s/%s: изглежда лично — сложи \"personal\": true, за да се пази отделно от отговорите"
+                            % (where, fld.get("id")))
             for other in fld.get("required_if", []):
                 if other not in fids:
                     err.append("%s/%s: required_if сочи липсващо поле „%s“" % (where, fld.get("id"), other))
@@ -697,7 +702,8 @@ def forms_spec(event):
     for f in event.get("forms", []):
         fields = []
         for x in f.get("fields", []):
-            spec = {"id": x["id"], "type": x["type"], "label": x["label"], "required": bool(x.get("required"))}
+            spec = {"id": x["id"], "type": x["type"], "label": x["label"], "required": bool(x.get("required")),
+                    "personal": is_personal(x)}
             if x["type"] in ("single", "multi"):
                 spec["options"] = resolve_options(x, event)
                 spec["other"] = bool(x.get("other"))
@@ -709,14 +715,20 @@ def forms_spec(event):
             if x.get("required_if"):
                 spec["required_if"] = list(x["required_if"])
             fields.append(spec)
-        out["forms"][f["id"]] = {"title": f["title"], "slug": f["slug"], "table": form_table(event, f), "fields": fields}
+        out["forms"][f["id"]] = {"title": f["title"], "slug": f["slug"], "table": form_table(event, f),
+                                 "contact_table": form_table(event, f) + "_kontakt", "fields": fields}
     return out
+
+
+def is_personal(field):
+    """Сочи ли полето към човек: имейл и съгласие винаги, другото — с "personal": true (напр. име, телефон)."""
+    return field.get("type") in ("email", "consent") or bool(field.get("personal"))
 
 
 def schema_sql(event):
     """sql/schema.sql — пуска го човек (phpMyAdmin); сайтът сам не създава таблици на живо."""
     lines = ["-- Сглобено от Shinkansen организатор за „%s“. Пуска се веднъж в базата (phpMyAdmin → SQL)." % event["slug"],
-             "-- Отговорите са JSON в колона answers: само полетата от api/forms.json.", ""]
+             "-- Отговорите са JSON в колона answers: само полетата от api/forms.json, без личните.", ""]
     for f in event.get("forms", []):
         lines.append("-- %s" % f["title"].replace("\n", " "))
         lines.append("CREATE TABLE IF NOT EXISTS `%s` (\n"
@@ -724,6 +736,15 @@ def schema_sql(event):
                      "  created_at DATETIME NOT NULL,\n"
                      "  answers MEDIUMTEXT NOT NULL\n"
                      ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\n" % form_table(event, f))
+        if any(is_personal(x) for x in f.get("fields", [])):
+            lines.append("-- Личните полета (%s) — отделно от отговорите, за да се трият поотделно:\n"
+                         "--   DELETE FROM `%s_kontakt` WHERE response_id = <№ от износа>;"
+                         % (", ".join(x["id"] for x in f["fields"] if is_personal(x)), form_table(event, f)))
+            lines.append("CREATE TABLE IF NOT EXISTS `%s_kontakt` (\n"
+                         "  response_id INT UNSIGNED NOT NULL PRIMARY KEY,\n"
+                         "  created_at DATETIME NOT NULL,\n"
+                         "  data MEDIUMTEXT NOT NULL\n"
+                         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\n" % form_table(event, f))
     lines.append("-- Ограничение на изпращанията: HMAC на IP адреса (не самият адрес), пази се един час.")
     lines.append("CREATE TABLE IF NOT EXISTS `%s` (\n"
                  "  ip_hash CHAR(64) NOT NULL,\n"
