@@ -1,6 +1,8 @@
 """Слой 7 и изданието: chernova → odobri → izdanie.
 
 chernova  подбира до 10 записа за деня (правилата в config["izdanie"]) → chernova_<дата>.json + .md.
+          Десетте места са само за ПРОПУСНИ. ПРЕДУПРЕДИ отиват във вътрешния раздел „За сведение“ под
+          черновата: не заемат място и не се одобряват.
 odobri    без --go само показва; с --go пише odobreno_<дата>.json. Нищо не отива на живо без него.
 izdanie   от одобрените файлове: radar.json (последните 30 дни), rss.xml, po-den/<дата>.json. Не качва нищо.
 
@@ -46,11 +48,16 @@ def kandidati(b, cfg, den):
 
 
 def podberi(b, cfg, den):
-    """→ (подбрани, [(запис, причина)] отпаднали на слой 7)."""
+    """→ (подбрани, за сведение, [(запис, причина)] отпаднали на слой 7).
+
+    Местата (maks_na_den) са само за ПРОПУСНИ. ПРЕДУПРЕДИ отиват „за сведение“ — вътрешно, без да заемат място."""
     ic = cfg["izdanie"]
-    izbrani, otpadnali, po_rub, po_izv = [], [], {}, {}
+    izbrani, za_svedenie, otpadnali, po_rub, po_izv = [], [], [], {}, {}
     for z in kandidati(b, cfg, den):
-        if not z["izvor_ime"]:
+        if z["reshenie"] != TIPOVE_ZA_PUBLIKUVANE[0]:
+            za_svedenie.append(z)
+            otpadnali.append((z, "ПРЕДУПРЕДИ — само за сведение, не заема място в изданието"))
+        elif not z["izvor_ime"]:
             otpadnali.append((z, "липсва източник — не се публикува"))
         elif not z["data"]:
             otpadnali.append((z, "липсва дата — не се публикува"))
@@ -66,7 +73,7 @@ def podberi(b, cfg, den):
             izbrani.append(z)
             po_rub[z["rubrika"]] = po_rub.get(z["rubrika"], 0) + 1
             po_izv[z["izvor"]] = po_izv.get(z["izvor"], 0) + 1
-    return izbrani, otpadnali
+    return izbrani, za_svedenie, otpadnali
 
 
 # ─────────── текстовете (моделът от Z7, през вратата) ───────────
@@ -140,11 +147,12 @@ def zapis_za_radara(z, cfg, nomer, kakvo="", znachi=""):
 
 
 def chernova(b, cfg, den, papka, sega, model=None):
-    izbrani, otpadnali = podberi(b, cfg, den)
+    izbrani, za_svedenie, otpadnali = podberi(b, cfg, den)
     zapisi = []
     for i, z in enumerate(izbrani, 1):
         kakvo, znachi = tekstove(model, z) if model is not None else ("", "")
         zapisi.append(zapis_za_radara(z, cfg, i, kakvo, znachi))
+    svedenie = [zapis_za_radara(z, cfg, None) for z in za_svedenie]  # без номер — не се одобряват
     vreme = sega.isoformat(timespec="seconds")
     for z, prichina in otpadnali:
         baza.log(b, vreme, 7, "НЕ Е ПОДБРАН", "%s (чернова %s)" % (prichina, den.isoformat()), z["id"], z["izvor"],
@@ -152,7 +160,8 @@ def chernova(b, cfg, den, papka, sega, model=None):
     b.commit()
     d = {"versiya": VERSIYA, "data": den.isoformat(), "sazdadena": vreme,
          "s_model": model is not None, "zapisi": zapisi,
-         "otpadnali_na_sloy7": len(otpadnali)}
+         "za_svedenie": svedenie,
+         "otpadnali_na_sloy7": len(otpadnali) - len(svedenie)}
     os.makedirs(papka, exist_ok=True)
     pj = os.path.join(papka, "chernova_%s.json" % den.isoformat())
     with open(pj, "w", encoding="utf-8") as f:
@@ -185,6 +194,13 @@ def md(d):
               "Цитат: „%s“ — %s" % (z["citat"], z["izvor"]["ime"]),
               ""]
     r += ["---", "Одобряване: `python -m filtar odobri --data %s [--mahni 3,7] --go`" % d["data"], ""]
+    if d.get("za_svedenie"):
+        r += ["## За сведение (вътрешно — ПРЕДУПРЕДИ, не заемат място и не се одобряват)", ""]
+        for z in d["za_svedenie"]:
+            r.append("- %s — %s · %s · оценка %.1f (%s), увереност: %s · %s" % (
+                z["zaglavie"], z["izvor"]["ime"], z["rubrika"]["ime"] or "без рубрика", z["ocenka"], z["po_dumi"],
+                z["uverenost"] or "—", z["url"]))
+        r.append("")
     return "\n".join(r)
 
 
