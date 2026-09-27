@@ -1,10 +1,19 @@
 // Прожекция: P — вкл./изкл., → ↓ PageDown Space — напред, ← ↑ PageUp — назад, Home/End, F — цял екран, Esc — изход.
-// Кликерите пращат PageDown/PageUp. Без мрежа и без библиотеки. Позицията стои в адреса (#p3), за да оцелее при презареждане.
+// Кликерите пращат PageDown/PageUp. След последния блок продължава в следващата страница (<link rel="next">),
+// преди първия — в последния блок на предишната. Без мрежа и без библиотеки. Позицията стои в адреса (#p3), за да оцелее при презареждане.
 (function () {
   "use strict";
   var root = document.documentElement, slides = [], i = 0, counter = null;
 
+  function go(rel, hash) {
+    var l = document.querySelector('link[rel="' + rel + '"]');
+    if (l) location.href = l.getAttribute("href") + hash;
+    return !!l;
+  }
+
   function show(n) {
+    if (n >= slides.length && go("next", "#p1")) return;
+    if (n < 0 && go("prev", "#pend")) return;
     i = Math.max(0, Math.min(slides.length - 1, n));
     slides.forEach(function (s, k) { s.classList.toggle("on", k === i); });
     if (slides[i]) slides[i].scrollTop = 0;
@@ -22,7 +31,8 @@
       document.body.appendChild(counter);
     }
     root.classList.add("present");
-    show(n || 0);
+    i = 0;
+    show(Math.min(n || 0, slides.length - 1));
   }
 
   function stop() {
@@ -57,6 +67,6 @@
     if (b) { on() ? stop() : start(0); }
   });
 
-  var m = /^#p(\d+)$/.exec(location.hash);
-  if (m) start(parseInt(m[1], 10) - 1);
+  var m = /^#p(\d+|end)$/.exec(location.hash);
+  if (m) start(m[1] === "end" ? 1e9 : parseInt(m[1], 10) - 1);
 })();

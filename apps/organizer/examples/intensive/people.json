@@ -1,6 +1,0 @@
-{
-  "_help": "Един човек е един ред в speakers или partners. Празните места се допълват с празни профили до placeholders.",
-  "placeholders": {"speakers": 4, "partners": 4},
-  "speakers": [],
-  "partners": []
-}

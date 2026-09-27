@@ -2,17 +2,19 @@
 """Организатор на събития: event.json → проверка, готовност, сайт с въпросници и прожекция.
 
     python3 organizer.py new ПАПКА                 # ново събитие от примерния шаблон
-    python3 organizer.py check ПАПКА               # грешки и какво още липсва
+    python3 organizer.py check ПАПКА               # грешки, липси и всички „[ЧАКА …]“
     python3 organizer.py build ПАПКА ИЗХОД [--demo]
 
-ПАПКА съдържа event.json и people.json. Истинските събития стоят извън репото; тук е само моделът
-и измислен пример (examples/intensive). Само стандартна библиотека на Python 3.
+ПАПКА съдържа event.json, data/ (лектори и партньори — по един запис на човек) и по желание
+assets/ (лого, локални шрифтове), което се копира в изхода. Истинските събития стоят извън
+репото; тук е само моделът и измислен пример (examples/intensive). Само стандартна библиотека.
 
-Изходът е статичен сайт плюс PHP за въпросниците (api/) и за износа в CSV (export/).
+Изходът е статичен сайт плюс PHP за въпросниците (api/), износ в CSV (admin/) и sql/schema.sql.
 Докато publish.indexable е false, всяка страница носи noindex, а .htaccess добавя X-Robots-Tag.
---demo сглобява без изпращане на въпросниците (за преглед и за GitHub Pages).
+След сглобяването се проверяват вътрешните връзки и забранените текстове (publish.forbid_*).
+--demo сглобява без PHP и без изпращане на въпросниците (за преглед и за GitHub Pages).
 
-Код на изход: 0 — готово · 1 — грешки в event.json · 2 — грешни аргументи.
+Код на изход: 0 — готово · 1 — грешки · 2 — грешни аргументи.
 """
 import argparse
 import html
@@ -29,29 +31,44 @@ EXAMPLE = os.path.join(HERE, "examples", "intensive")
 FIELD_TYPES = {"single", "multi", "text", "textarea", "email", "consent"}
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+TABLE_RE = re.compile(r"^[a-z][a-z0-9_]{0,50}$")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 FONT_RE = re.compile(r"^[\w\s,'\"-]+$")
-RESERVED_SLUGS = {"index", "programa", "razpisanie", "api", "export", "assets"}
+LOCAL_RE = re.compile(r"^[\w][\w./-]*$")
+URL_RE = re.compile(r"^(https://|[\w][\w./#-]*$)")
+FIXED_PAGES = {"index", "programa", "razpisanie", "lektori", "organizatori", "privacy"}
+RESERVED_SLUGS = FIXED_PAGES | {"api", "admin", "assets", "data", "sql"}
 MONTHS = ["януари", "февруари", "март", "април", "май", "юни", "юли", "август",
           "септември", "октомври", "ноември", "декември"]
+DEFAULT_THEME = {"accent": "#3a7be8", "ink": "#15151a", "paper": "#faf8f4",
+                 "font_display": "Georgia, serif", "font_body": "system-ui, sans-serif"}
 
 
 # ---------- четене ----------
 
+def people_files(event):
+    p = event.get("people", {})
+    return {"speakers": p.get("speakers_file", "data/lektori.json"),
+            "partners": p.get("partners_file", "data/partnyori.json")}
+
+
 def load(folder):
     with open(os.path.join(folder, "event.json"), encoding="utf-8") as f:
         event = json.load(f)
-    people_path = os.path.join(folder, "people.json")
-    people = {"speakers": [], "partners": [], "placeholders": {}}
-    if os.path.exists(people_path):
-        with open(people_path, encoding="utf-8") as f:
-            people.update(json.load(f))
+    people = {}
+    for kind, rel in people_files(event).items():
+        path = os.path.join(folder, rel)
+        people[kind] = []
+        if LOCAL_RE.match(rel) and ".." not in rel and os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                people[kind] = json.load(f)
     return event, people
 
 
-def topic_page(n):
-    return "tema-%02d.html" % n
+def topic_page(t):
+    """tema-01.html или tema-01-softuer.html, ако темата има slug."""
+    return "tema-%02d%s.html" % (t["n"], "-" + t["slug"] if t.get("slug") else "")
 
 
 def resolve_options(field, event):
@@ -59,6 +76,28 @@ def resolve_options(field, event):
     if field.get("options_from") == "topics":
         return ["%d. %s" % (t["n"], t["title"]) for t in event.get("topics", [])]
     return list(field.get("options", []))
+
+
+def form_table(event, f):
+    return f.get("table") or "%s_%s" % (event["slug"].replace("-", "_"), f["id"])
+
+
+def rate_table(event):
+    return event.get("server", {}).get("rate_table") or "%s_rate" % event["slug"].replace("-", "_")
+
+
+def pending(obj, marker, path="event"):
+    """Всички текстове с маркера (напр. „[ЧАКА“) — с пътя до тях, за доклада."""
+    out = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out += pending(v, marker, "%s.%s" % (path, k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            out += pending(v, marker, "%s[%d]" % (path, i))
+    elif isinstance(obj, str) and marker in obj and not path.endswith(".pending_marker"):
+        out.append((path, obj))
+    return out
 
 
 # ---------- проверка ----------
@@ -78,17 +117,23 @@ def check(event, people):
     if event.get("slug") and not SLUG_RE.match(event["slug"]):
         err.append("slug: само малки латински букви, цифри и тире")
     need(event.get("brand"), "name", "brand")
+    logo = event.get("brand", {}).get("logo")
+    if logo and (not LOCAL_RE.match(logo) or ".." in logo):
+        err.append("brand.logo: относителен път в папката на събитието (напр. assets/logo.svg)")
 
     theme = event.get("theme", {})
-    for key in ("accent", "ink", "paper"):
+    for key in ("accent", "ink", "paper", "hero_bg", "hero_ink"):
         if key in theme and not COLOR_RE.match(str(theme[key])):
             err.append("theme.%s: цвят във вида #rrggbb" % key)
-    for key in ("font_display", "font_body"):
+    for key in ("font_display", "font_body", "font_mono"):
         if key in theme and not FONT_RE.match(str(theme[key])):
             err.append("theme.%s: само имена на шрифтове" % key)
     fonts_css = theme.get("fonts_css")
     if fonts_css and not str(fonts_css).startswith("https://fonts.googleapis.com/"):
         err.append("theme.fonts_css: само от fonts.googleapis.com (или null)")
+    for s in theme.get("stylesheets", []):
+        if not LOCAL_RE.match(s) or ".." in s:
+            err.append("theme.stylesheets: само локални файлове (напр. assets/fonts/fonts.css)")
 
     d = event.get("dates", {})
     parsed = {}
@@ -118,7 +163,10 @@ def check(event, people):
         where = "тема %s" % t.get("n")
         if not isinstance(t.get("n"), int) or t["n"] < 1:
             err.append("%s: n е цяло число от 1 нагоре" % where)
+            continue
         need(t, "title", where)
+        if t.get("slug") and not SLUG_RE.match(t["slug"]):
+            err.append("%s: slug само с малки латински букви, цифри и тире" % where)
         for rid in t.get("lab", {}):
             if rid not in role_ids:
                 err.append("%s: лабораторията ползва непозната роля „%s“" % (where, rid))
@@ -127,6 +175,11 @@ def check(event, people):
             todo.append("%s: лабораторията е празна за %s" % (where, ", ".join(missing)))
         if not t.get("demo"):
             todo.append("%s: няма „Демо на живо“" % where)
+        for s in t.get("sections", []):
+            tbl = s.get("table")
+            if tbl and any(len(row) != len(tbl.get("head", [])) for row in tbl.get("rows", [])):
+                err.append("%s/%s: всеки ред на таблицата иска толкова клетки, колкото има head"
+                           % (where, s.get("title")))
 
     days = event.get("schedule", [])
     if not days:
@@ -141,10 +194,17 @@ def check(event, people):
             err.append("%s: дата във вида ГГГГ-ММ-ДД" % where)
         prev = None
         for s in day.get("slots", []):
+            times_ok = True
             for key in ("from", "to"):
-                if not TIME_RE.match(str(s.get(key, ""))):
-                    err.append("%s: час „%s“ във вида ЧЧ:ММ" % (where, s.get(key)))
-            if TIME_RE.match(str(s.get("from", ""))) and TIME_RE.match(str(s.get("to", ""))):
+                v = str(s.get(key, ""))
+                if v and not TIME_RE.match(v):
+                    err.append("%s: час „%s“ във вида ЧЧ:ММ" % (where, v))
+                    times_ok = False
+                elif not v:
+                    times_ok = False
+            if not s.get("from") and not s.get("to"):
+                todo.append("%s: „%s“ е без час" % (where, s.get("title")))
+            if times_ok:
                 if s["to"] <= s["from"]:
                     err.append("%s: %s–%s свършва преди да започне" % (where, s["from"], s["to"]))
                 if prev and s["from"] < prev:
@@ -159,18 +219,24 @@ def check(event, people):
             todo.append("тема %s: не е в разписанието" % n)
 
     forms = event.get("forms", [])
-    ids, slugs = set(), set()
+    ids, slugs, tables = set(), set(), set()
     for f in forms:
         where = "въпросник %s" % f.get("id")
         if not f.get("id") or not ID_RE.match(f["id"]):
             err.append("%s: id на латиница" % where)
+            continue
         if not f.get("slug") or not SLUG_RE.match(f["slug"]) or f["slug"] in RESERVED_SLUGS \
-                or re.match(r"^tema-\d+$", f["slug"]):
+                or f["slug"].startswith("tema-"):
             err.append("%s: slug е зает или невалиден" % where)
         if f.get("id") in ids or f.get("slug") in slugs:
             err.append("%s: повтарящ се id или slug" % where)
         ids.add(f.get("id"))
         slugs.add(f.get("slug"))
+        if event.get("slug"):
+            tbl = form_table(event, f)
+            if not TABLE_RE.match(tbl) or tbl in tables:
+                err.append("%s: таблица „%s“ — латиница, цифри, _ и без повторение" % (where, tbl))
+            tables.add(tbl)
         fids = set()
         for fld in f.get("fields", []):
             fw = "%s/%s" % (where, fld.get("id"))
@@ -190,25 +256,49 @@ def check(event, people):
     cta = event.get("cta", {})
     if cta.get("form") and cta["form"] not in ids:
         err.append("cta.form: няма въпросник „%s“" % cta["form"])
+    if event.get("slug") and rate_table(event) in tables:
+        err.append("server.rate_table: съвпада с таблица на въпросник")
+    cfg = event.get("server", {}).get("config_file")
+    if cfg and (not re.match(r"^[\w.][\w./-]*$", cfg) or ".." in cfg):
+        err.append("server.config_file: път спрямо папката над public_html, без „..“")
 
     for kind, label in (("speakers", "лектори"), ("partners", "партньори")):
-        for i, p in enumerate(people.get(kind, [])):
-            if not isinstance(p, dict) or not p.get("name"):
-                err.append("people.%s[%d]: липсва name" % (kind, i))
+        rel = people_files(event)[kind]
+        if not LOCAL_RE.match(rel) or ".." in rel or not rel.endswith(".json"):
+            err.append("people.%s_file: относителен .json път" % kind)
+        lst = people.get(kind, [])
+        if not isinstance(lst, list):
+            err.append("%s: трябва да е списък — един запис на човек" % rel)
+            continue
+        for i, p in enumerate(lst):
+            if not isinstance(p, dict) or not (p.get("name") or p.get("slot")):
+                err.append("%s[%d]: иска name (потвърден) или slot (за какво търсим човек)" % (rel, i))
+                continue
             for key in ("photo", "link"):
-                v = (p or {}).get(key) if isinstance(p, dict) else None
-                if v and not re.match(r"^(https://|[\w./-]+$)", v):
-                    err.append("people.%s[%d].%s: https:// адрес или относителен път" % (kind, i, key))
-        if not people.get(kind):
-            todo.append("%s: няма нито един — показват се празни профили" % label)
+                v = p.get(key)
+                if v and (not URL_RE.match(v) or ".." in v):
+                    err.append("%s[%d].%s: https:// адрес или относителен път" % (rel, i, key))
+        confirmed = [p for p in lst if isinstance(p, dict) and p.get("name")]
+        if not confirmed:
+            todo.append("%s: няма потвърден — показват се празни профили" % label)
 
-    forbid = event.get("publish", {}).get("forbid_text", [])
+    pub = event.get("publish", {})
+    forbid = pub.get("forbid_text", [])
     if not isinstance(forbid, list) or not all(isinstance(x, str) and x.strip() for x in forbid):
         err.append("publish.forbid_text: списък от непразни низове")
+    for rx in pub.get("forbid_regex", []):
+        try:
+            re.compile(rx)
+        except (re.error, TypeError):
+            err.append("publish.forbid_regex: невалиден израз „%s“" % rx)
 
-    if not event.get("publish", {}).get("indexable"):
+    marker = pub.get("pending_marker", "[ЧАКА")
+    waits = pending(event, marker) + pending(people, marker, "data")
+    if waits:
+        todo.append("%s: %d места чакат отговор (виж по-долу)" % (marker, len(waits)))
+    if not pub.get("indexable"):
         todo.append("публикуване: скрито от търсачките (publish.indexable = false, чака „go“)")
-    elif not event.get("publish", {}).get("base_url"):
+    elif not pub.get("base_url"):
         todo.append("публикуване: без publish.base_url няма sitemap.xml")
     return err, todo
 
@@ -220,10 +310,10 @@ def esc(s):
 
 
 def md(text):
-    """Малко markdown в ред: **удебелено** и [текст](https://…). Всичко друго се екранира."""
+    """Малко markdown в ред: **удебелено** и [текст](https://… или страница.html). Всичко друго се екранира."""
     out = html.escape(str(text), quote=False)
     out = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", out)
-    out = re.sub(r"\[([^\]]+)\]\((https://[^)\s\"]+|[\w./#-]+)\)",
+    out = re.sub(r"\[([^\]]+)\]\((https://[^)\s\"]+|[\w][\w./#-]*)\)",
                  lambda m: '<a href="%s">%s</a>' % (m.group(2).replace('"', "%22"), m.group(1)), out)
     return out
 
@@ -243,38 +333,63 @@ def date_label(event):
 
 
 def theme_css(theme):
-    t = {"accent": "#3a7be8", "ink": "#15151a", "paper": "#faf8f4",
-         "font_display": "Georgia, serif", "font_body": "system-ui, sans-serif"}
-    t.update({k: v for k, v in theme.items() if v})
-    return (":root{--accent:%(accent)s;--ink:%(ink)s;--paper:%(paper)s;"
-            "--font-display:%(font_display)s;--font-body:%(font_body)s}" % t)
+    t = dict(DEFAULT_THEME)
+    t.update({k: v for k, v in theme.items() if isinstance(v, str) and v})
+    t.setdefault("hero_bg", t["ink"])
+    t.setdefault("hero_ink", t["paper"])
+    t.setdefault("font_mono", "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace")
+    return (":root{--accent:%(accent)s;--ink:%(ink)s;--paper:%(paper)s;--hero-bg:%(hero_bg)s;--hero-ink:%(hero_ink)s;"
+            "--font-display:%(font_display)s;--font-body:%(font_body)s;--font-mono:%(font_mono)s}" % t)
 
 
-def page(event, name, title, body, demo, current=None, extra_scripts=()):
-    theme = event.get("theme", {})
-    indexable = bool(event.get("publish", {}).get("indexable"))
-    robots = "index, follow" if indexable else "noindex, nofollow"
-    fonts = ""
-    if theme.get("fonts_css"):
-        fonts = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
-                 '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-                 '<link rel="stylesheet" href="%s">' % esc(theme["fonts_css"]))
-    canon = ""
-    base = event.get("publish", {}).get("base_url")
-    if indexable and base:
-        canon = '<link rel="canonical" href="%s">' % esc(base.rstrip("/") + "/" + ("" if name == "index.html" else name))
-    nav = [("programa.html", "Програмата"), ("razpisanie.html", "Разписание")]
+def page_order(event):
+    """Редът на прожекцията през страниците: начало → програма → темите → разписание."""
+    return ["index.html", "programa.html"] + [topic_page(t) for t in event.get("topics", [])] + ["razpisanie.html"]
+
+
+def main_form(event):
     cta = event.get("cta", {})
-    form = next((f for f in event.get("forms", []) if f["id"] == cta.get("form")), None)
+    return next((f for f in event.get("forms", []) if f["id"] == cta.get("form")), None)
+
+
+def page(event, name, title, body, demo, current=None, extra_scripts=(), description=None):
+    theme = event.get("theme", {})
+    pub = event.get("publish", {})
+    indexable = bool(pub.get("indexable"))
+    robots = "index, follow" if indexable else "noindex, nofollow"
+    head = []
+    if theme.get("fonts_css"):
+        head.append('<link rel="preconnect" href="https://fonts.googleapis.com">'
+                    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+                    '<link rel="stylesheet" href="%s">' % esc(theme["fonts_css"]))
+    for s in theme.get("stylesheets", []):
+        head.append('<link rel="stylesheet" href="%s">' % esc(s))
+    base = pub.get("base_url")
+    if indexable and base:
+        head.append('<link rel="canonical" href="%s">' % esc(base.rstrip("/") + "/" + ("" if name == "index.html" else name)))
+    order = page_order(event)
+    if name in order:
+        k = order.index(name)
+        if k > 0:
+            head.append('<link rel="prev" href="%s">' % order[k - 1])
+        if k < len(order) - 1:
+            head.append('<link rel="next" href="%s">' % order[k + 1])
+    nav = [("programa.html", "Програмата"), ("razpisanie.html", "Разписание"),
+           ("lektori.html", "Лектори"), ("organizatori.html", "Организатори")]
+    form = main_form(event)
     if form:
-        nav.append((form["slug"] + ".html", cta.get("label") or form["title"]))
+        nav.append((form["slug"] + ".html", event.get("cta", {}).get("label") or form["title"]))
     nav_html = "".join('<a href="%s"%s>%s</a>' % (h, ' aria-current="page"' if h == current else "", esc(l))
                        for h, l in nav)
     brand = event["brand"]
-    ribbon = '<div class="ribbon">%s</div>' % esc(brand["ribbon"]) if brand.get("ribbon") else ""
+    ribbon = '<div class="ribbon">%s</div>' % md(brand["ribbon"]) if brand.get("ribbon") else ""
+    mark = '<img class="logo" src="%s" alt="%s">' % (esc(brand["logo"]), esc(brand["name"])) if brand.get("logo") \
+        else esc(brand["name"])
     legal = esc(brand.get("legal") or brand["name"])
+    privacy = ' · <a href="privacy.html">Поверителност</a>' if event.get("privacy") else ""
     scripts = "".join('<script src="assets/%s" defer></script>' % s for s in ("present.js",) + tuple(extra_scripts))
     full_title = title if name == "index.html" else "%s · %s" % (title, event["title"])
+    desc = description or event.get("description") or event.get("tagline", "")
     return """<!doctype html>
 <html lang="%(lang)s">
 <head>
@@ -283,25 +398,27 @@ def page(event, name, title, body, demo, current=None, extra_scripts=()):
 <title>%(title)s</title>
 <meta name="description" content="%(desc)s">
 <meta name="robots" content="%(robots)s">
-%(canon)s%(fonts)s
+<meta name="referrer" content="strict-origin-when-cross-origin">
+%(head)s
 <style>%(css)s</style>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body%(demo)s>
 %(ribbon)s
-<header class="top"><a class="brand" href="index.html">%(brand)s</a><nav>%(nav)s</nav></header>
+<header class="top"><a class="brand" href="index.html">%(mark)s</a><nav>%(nav)s</nav></header>
 <main>
 %(body)s
 </main>
-<footer class="foot"><span>%(legal)s · %(event)s · %(dates)s</span>
+<footer class="foot"><span>%(legal)s · %(event)s · %(dates)s%(privacy)s</span>
 <button type="button" class="present-toggle" data-present-toggle title="Прожекция: P · стрелки · Esc">Прожекция (P)</button></footer>
 %(scripts)s
 </body>
 </html>
-""" % {"lang": esc(event.get("lang", "bg")), "title": esc(full_title), "desc": esc(event.get("description", event.get("tagline", ""))),
-       "robots": robots, "canon": canon, "fonts": fonts, "css": theme_css(theme),
-       "demo": ' data-demo="1"' if demo else "", "ribbon": ribbon, "brand": esc(brand["name"]), "nav": nav_html,
-       "body": body, "legal": legal, "event": esc(event["title"]), "dates": esc(date_label(event)), "scripts": scripts}
+""" % {"lang": esc(event.get("lang", "bg")), "title": esc(full_title), "desc": esc("%s · %s" % (desc, date_label(event))),
+       "robots": robots, "head": "\n".join(head), "css": theme_css(theme),
+       "demo": ' data-demo="1"' if demo else "", "ribbon": ribbon, "mark": mark, "nav": nav_html,
+       "body": body, "legal": legal, "event": esc(event["title"]), "dates": esc(date_label(event)),
+       "privacy": privacy, "scripts": scripts}
 
 
 def block(inner, cls="", label=None):
@@ -315,30 +432,156 @@ def cards(items, cls="cards"):
             esc(i["title"]), '<p>%s</p>' % md(i["text"]) if i.get("text") else "") for i in items))
 
 
+def table(tbl):
+    head = "".join("<th>%s</th>" % md(h) for h in tbl.get("head", []))
+    rows = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % md(c) for c in row) for row in tbl.get("rows", []))
+    return '<div class="table-wrap"><table class="grid"><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>' % (head, rows)
+
+
+def section(s, cls=""):
+    """Раздел: заглавие, увод, карти, таблица, списък — в този ред, каквото има."""
+    parts = ['<h2>%s</h2>' % esc(s["title"])]
+    if s.get("intro"):
+        parts.append('<p class="lead">%s</p>' % md(s["intro"]))
+    if s.get("items"):
+        parts.append(cards(s["items"]))
+    if s.get("table"):
+        parts.append(table(s["table"]))
+    if s.get("list"):
+        parts.append('<ul class="ticks">%s</ul>' % "".join("<li>%s</li>" % md(x) for x in s["list"]))
+    return block("\n".join(parts), s.get("cls", cls), s["title"])
+
+
 def cta_button(event, cls="btn"):
-    cta = event.get("cta", {})
-    form = next((f for f in event.get("forms", []) if f["id"] == cta.get("form")), None)
+    form = main_form(event)
     if not form:
         return ""
-    return '<a class="%s" href="%s.html">%s</a>' % (cls, esc(form["slug"]), esc(cta.get("label") or form["title"]))
+    return '<a class="%s" href="%s.html">%s</a>' % (cls, esc(form["slug"]), esc(event.get("cta", {}).get("label") or form["title"]))
 
 
-def people_block(event, people, kind, title):
-    """Статични профили (работят и без JS); assets/people.js ги опреснява от people.json в движение."""
-    count = max(len(people.get(kind, [])), int(people.get("placeholders", {}).get(kind, 0)))
-    items = []
-    for i in range(count):
-        p = people.get(kind, [])[i] if i < len(people.get(kind, [])) else None
-        items.append(person_card(p, kind))
-    return block('<h2>%s</h2>\n<div class="people" data-people="%s">%s</div>' % (esc(title), kind, "".join(items)),
-                 "people-block", title)
+def hero(kicker, title, lead="", extra=""):
+    return block('<p class="kicker">%s</p>\n<h1>%s</h1>\n%s%s' % (
+        esc(kicker), esc(title), '<p class="lead">%s</p>\n' % md(lead) if lead else "", extra), "hero small", title)
+
+
+# ---------- страниците ----------
+
+def home(event, demo):
+    place = event.get("place", {})
+    top = ('<p class="kicker">%s · %s</p>\n<h1>%s</h1>\n<p class="lead">%s</p>\n'
+           '<p class="meta">%s</p>\n<p class="actions">%s <a class="btn ghost" href="programa.html">Програмата</a></p>') % (
+        esc(date_label(event)), esc(place.get("name", "")), esc(event["title"]), md(event.get("tagline", "")),
+        esc(" · ".join(x for x in (place.get("seats"), place.get("note")) if x)), cta_button(event))
+    parts = [block(top, "hero", event["title"])]
+    stats = event.get("home", {}).get("stats", [])
+    if stats:
+        parts.append(block('<div class="stats">%s</div>' % "".join(
+            '<div class="stat"><b>%s</b><span>%s</span></div>' % (esc(x["value"]), md(x.get("label", ""))) for x in stats),
+            "stats-block", "Накратко"))
+    roles = event.get("lab_roles", [])
+    if roles:
+        parts.append(block("<h2>За кого</h2>\n" + cards([{"title": r["label"], "text": r.get("text", "")} for r in roles],
+                                                          "cards four"), "", "За кого"))
+    for s in event.get("home", {}).get("sections", []):
+        parts.append(section(s))
+    topics = event.get("topics", [])
+    if topics:
+        tiles = "".join('<a class="topic" href="%s"><span class="n">%02d</span><b>%s</b><span>%s</span></a>' % (
+            topic_page(t), t["n"], esc(t["title"]), esc(t.get("question") or t.get("summary", ""))) for t in topics)
+        parts.append(block('<h2>Темите</h2>\n<div class="topics">%s</div>' % tiles, "", "Темите"))
+    days = event.get("schedule", [])
+    if days:
+        tiles = "".join('<article class="card"><h3>%s</h3><p class="muted">%s</p><p>%s</p></article>' % (
+            esc(day.get("label", "")), esc(human_date(day["date"])),
+            esc(" · ".join(s["title"] for s in day.get("slots", [])))) for day in days)
+        parts.append(block('<h2>Дните</h2>\n<div class="cards">%s</div>\n<p><a href="razpisanie.html">Разписанието по часове →</a></p>'
+                           % tiles, "", "Дните"))
+    if cta_button(event):
+        parts.append(block('<h2>%s</h2>\n<p class="lead">%s</p>\n<p>%s</p>' % (
+            esc(event.get("cta", {}).get("label", "")), esc(place.get("seats", "")), cta_button(event)), "cta", "Записване"))
+    return page(event, "index.html", event["title"], "\n".join(parts), demo)
+
+
+def programa(event, demo):
+    tiles = "".join('<a class="topic" href="%s"><span class="n">%02d</span><b>%s</b><span>%s</span></a>' % (
+        topic_page(t), t["n"], esc(t["title"]), esc(t.get("question") or t.get("summary", "")))
+        for t in event.get("topics", []))
+    body = hero(date_label(event), "Програмата", event.get("program_intro", "")) + "\n" + \
+        block('<div class="topics">%s</div>' % tiles, "", "Темите")
+    return page(event, "programa.html", "Програмата", body, demo, current="programa.html")
+
+
+def topic(event, t, demo):
+    topics = event.get("topics", [])
+    idx = topics.index(t)
+    lead = t.get("question") or t.get("summary", "")
+    parts = [hero("Тема %d от %d" % (t["n"], len(topics)), t["title"], lead,
+                  '<p class="meta">%s</p>' % md(t["summary"]) if t.get("question") and t.get("summary") else "")]
+    if t.get("goals"):
+        parts.append(block('<h2>Какво ще можеш</h2>\n<ul class="ticks">%s</ul>' % "".join(
+            "<li>%s</li>" % md(g) for g in t["goals"]), "", "Какво ще можеш"))
+    if t.get("concepts"):
+        parts.append(block('<h2>Понятията</h2>\n<dl class="concepts">%s</dl>' % "".join(
+            "<div><dt>%s</dt><dd>%s</dd></div>" % (esc(c["term"]), md(c.get("text", ""))) for c in t["concepts"]),
+            "", "Понятията"))
+    for s in t.get("sections", []):
+        parts.append(section(s))
+    if t.get("demo"):
+        dm = t["demo"]
+        parts.append(block('<h2>%s</h2>\n%s<ol class="steps">%s</ol>' % (
+            esc(dm.get("title", "Демо на живо")), '<p class="lead">%s</p>' % md(dm["intro"]) if dm.get("intro") else "",
+            "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))), "demo", "Демо на живо"))
+    roles = event.get("lab_roles", [])
+    if roles:
+        cols = "".join('<article class="lab-col"><h3>%s</h3><ul>%s</ul></article>' % (
+            esc(r["label"]), "".join("<li>%s</li>" % md(x) for x in t.get("lab", {}).get(r["id"], []))
+            or '<li class="muted">Предстои</li>') for r in roles)
+        parts.append(block('<h2>Лаборатория</h2>\n<div class="lab" style="--cols:%d">%s</div>' % (len(roles), cols),
+                           "lab-block", "Лаборатория"))
+    if t.get("takeaways"):
+        parts.append(block('<h2>Какво отнасяш вкъщи</h2>\n<ul class="ticks">%s</ul>' % "".join(
+            "<li>%s</li>" % md(x) for x in t["takeaways"]), "", "Какво отнасяш вкъщи"))
+    if t.get("source"):
+        src = t["source"]
+        parts.append(block('<h2>%s</h2>\n<p class="lead">%s</p>' % (esc(src.get("title", "Изходник")), md(src.get("text", ""))),
+                           "source", "Изходник"))
+    nav = []
+    if idx > 0:
+        nav.append('<a href="%s" rel="prev">← %s</a>' % (topic_page(topics[idx - 1]), esc(topics[idx - 1]["title"])))
+    nav.append('<a href="programa.html">Всички теми</a>')
+    if idx < len(topics) - 1:
+        nav.append('<a href="%s" rel="next">%s →</a>' % (topic_page(topics[idx + 1]), esc(topics[idx + 1]["title"])))
+    parts.append('<nav class="pager">%s</nav>' % "".join(nav))
+    return page(event, topic_page(t), "Тема %d: %s" % (t["n"], t["title"]), "\n".join(parts), demo,
+                current="programa.html", description="Тема %d: %s. %s" % (t["n"], t["title"], lead))
+
+
+def razpisanie(event, demo):
+    by_n = {t["n"]: t for t in event.get("topics", [])}
+    parts = [hero("%s · %s" % (date_label(event), event.get("place", {}).get("name", "")), "Разписание",
+                  event.get("schedule_intro", ""))]
+    for day in event.get("schedule", []):
+        rows = []
+        for s in day.get("slots", []):
+            links = " · ".join('<a href="%s">Тема %d: %s</a>' % (topic_page(by_n[n]), n, esc(by_n[n]["title"]))
+                               for n in s.get("topics", []) if n in by_n)
+            when = "%s–%s" % (s["from"], s["to"]) if s.get("from") and s.get("to") else (s.get("time") or "")
+            rows.append('<tr%s><td class="time">%s</td><td><b>%s</b>%s</td></tr>' % (
+                ' class="pause"' if s.get("pause") else "", md(when), esc(s["title"]), "<br>" + links if links else ""))
+        parts.append(block('<h2>%s <span class="muted">%s</span></h2>\n%s<table class="slots">%s</table>' % (
+            esc(day.get("label", "")), esc(human_date(day["date"])),
+            '<p class="lead">%s</p>' % md(day["intro"]) if day.get("intro") else "", "".join(rows)), "", day.get("label")))
+    return page(event, "razpisanie.html", "Разписание", "\n".join(parts), demo, current="razpisanie.html")
 
 
 def person_card(p, kind):
-    if not p:
+    who = "Лектор" if kind == "speakers" else "Партньор"
+    if not p or not p.get("name"):
+        slot = (p or {}).get("slot")
         return ('<article class="person empty"><div class="avatar" aria-hidden="true"></div>'
-                '<h3>%s</h3><p class="muted">Предстои</p></article>' % ("Лектор" if kind == "speakers" else "Партньор"))
-    photo = '<img class="avatar" src="%s" alt="" loading="lazy">' % esc(p["photo"]) if p.get("photo") \
+                '<h3>%s</h3><p class="muted">очаква потвърждение</p></article>' % (
+                    esc("%s · %s" % (who, slot)) if slot else who))
+    photo = '<img class="avatar" src="%s" alt="%s" loading="lazy">' % (esc(p["photo"]), esc(p["name"])) if p.get("photo") \
         else '<div class="avatar" aria-hidden="true"></div>'
     name = esc(p["name"])
     if p.get("link"):
@@ -348,95 +591,41 @@ def person_card(p, kind):
         '<p>%s</p>' % md(p["bio"]) if p.get("bio") else "")
 
 
-def home(event, people, demo):
-    place = event.get("place", {})
-    hero = ('<p class="kicker">%s · %s</p>\n<h1>%s</h1>\n<p class="lead">%s</p>\n'
-            '<p class="meta">%s</p>\n<p class="actions">%s <a class="btn ghost" href="programa.html">Програмата</a></p>') % (
-        esc(date_label(event)), esc(place.get("name", "")), esc(event["title"]), md(event.get("tagline", "")),
-        esc(" · ".join(x for x in (place.get("seats"), place.get("note")) if x)), cta_button(event))
-    parts = [block(hero, "hero", event["title"])]
-    why = event.get("home", {}).get("why")
-    if why:
-        parts.append(block("<h2>Защо така</h2>\n" + cards(why), "", "Защо така"))
-    roles = event.get("lab_roles", [])
-    if roles:
-        parts.append(block("<h2>За кого</h2>\n" + cards([{"title": r["label"], "text": r.get("text", "")} for r in roles],
-                                                          "cards four"), "", "За кого"))
-    topics = event.get("topics", [])
-    if topics:
-        tiles = "".join('<a class="topic" href="%s"><span class="n">%02d</span><b>%s</b><span>%s</span></a>' % (
-            topic_page(t["n"]), t["n"], esc(t["title"]), esc(t.get("summary", ""))) for t in topics)
-        parts.append(block('<h2>Темите</h2>\n<div class="topics">%s</div>' % tiles, "", "Темите"))
-    days = event.get("schedule", [])
-    if days:
-        tiles = "".join('<article class="card"><h3>%s</h3><p class="muted">%s</p><p>%s</p></article>' % (
-            esc(day.get("label", "")), esc(human_date(day["date"])),
-            esc(" · ".join(s["title"] for s in day.get("slots", [])))) for day in days)
-        parts.append(block('<h2>Дните</h2>\n<div class="cards">%s</div>\n<p><a href="razpisanie.html">Разписанието по часове →</a></p>'
-                           % tiles, "", "Дните"))
-    parts.append(people_block(event, people, "speakers", "Лектори"))
-    parts.append(people_block(event, people, "partners", "Партньори"))
-    if cta_button(event):
-        parts.append(block('<h2>%s</h2>\n<p class="lead">%s</p>\n<p>%s</p>' % (
-            esc(event.get("cta", {}).get("label", "")), esc(place.get("seats", "")), cta_button(event)), "cta", "Записване"))
-    return page(event, "index.html", event["title"], "\n".join(parts), demo, extra_scripts=("people.js",))
+def people_grid(event, people, kind):
+    """Статични профили (работят и без JS); assets/people.js ги опреснява от data/*.json в движение."""
+    lst = [p for p in people.get(kind, []) if isinstance(p, dict)]
+    minimum = int(event.get("people", {}).get("placeholders", {}).get(kind, 0))
+    lst += [None] * max(0, minimum - len(lst))
+    return '<div class="people" data-people="%s" data-min="%d">%s</div>' % (
+        esc(people_files(event)[kind]), minimum, "".join(person_card(p, kind) for p in lst))
 
 
-def programa(event, demo):
-    rows = "".join('<li><a href="%s"><span class="n">%02d</span> <b>%s</b></a><p>%s</p></li>' % (
-        topic_page(t["n"]), t["n"], esc(t["title"]), esc(t.get("summary", ""))) for t in event.get("topics", []))
-    body = block('<p class="kicker">%s</p>\n<h1>Програмата</h1>\n<ol class="toc">%s</ol>' % (esc(date_label(event)), rows),
-                 "", "Програмата")
-    return page(event, "programa.html", "Програмата", body, demo, current="programa.html")
+def lektori(event, people, demo):
+    intro = event.get("people", {}).get("speakers_intro", "")
+    body = hero(event["title"], "Лектори", intro) + "\n" + block(people_grid(event, people, "speakers"), "people-block", "Лектори")
+    return page(event, "lektori.html", "Лектори", body, demo, current="lektori.html", extra_scripts=("people.js",))
 
 
-def topic(event, t, demo):
-    topics = event.get("topics", [])
-    idx = topics.index(t)
-    parts = [block('<p class="kicker">Тема %d от %d</p>\n<h1>%s</h1>\n<p class="lead">%s</p>' % (
-        t["n"], len(topics), esc(t["title"]), md(t.get("summary", ""))), "hero small", t["title"])]
-    if t.get("goals"):
-        parts.append(block('<h2>Какво ще можеш</h2>\n<ul class="ticks">%s</ul>' % "".join(
-            "<li>%s</li>" % md(g) for g in t["goals"]), "", "Какво ще можеш"))
-    for s in t.get("sections", []):
-        parts.append(block('<h2>%s</h2>\n%s%s' % (esc(s["title"]), '<p class="lead">%s</p>' % md(s["intro"]) if s.get("intro") else "",
-                                                cards(s.get("items", []))), "", s["title"]))
-    roles = event.get("lab_roles", [])
-    if roles:
-        cols = "".join('<article class="lab-col"><h3>%s</h3><ul>%s</ul></article>' % (
-            esc(r["label"]), "".join("<li>%s</li>" % md(x) for x in t.get("lab", {}).get(r["id"], []))
-            or '<li class="muted">Предстои</li>') for r in roles)
-        parts.append(block('<h2>Лаборатория</h2>\n<div class="lab" style="--cols:%d">%s</div>' % (len(roles), cols),
-                           "lab-block", "Лаборатория"))
-    if t.get("demo"):
-        dm = t["demo"]
-        parts.append(block('<h2>%s</h2>\n<ol class="steps">%s</ol>' % (esc(dm.get("title", "Демо на живо")), "".join(
-            "<li>%s</li>" % md(x) for x in dm.get("steps", []))), "demo", "Демо на живо"))
-    nav = []
-    if idx > 0:
-        nav.append('<a href="%s">← %s</a>' % (topic_page(topics[idx - 1]["n"]), esc(topics[idx - 1]["title"])))
-    nav.append('<a href="programa.html">Всички теми</a>')
-    if idx < len(topics) - 1:
-        nav.append('<a href="%s">%s →</a>' % (topic_page(topics[idx + 1]["n"]), esc(topics[idx + 1]["title"])))
-    parts.append('<nav class="pager">%s</nav>' % "".join(nav))
-    return page(event, topic_page(t["n"]), "Тема %d: %s" % (t["n"], t["title"]), "\n".join(parts), demo,
-                current="programa.html")
+def organizatori(event, people, demo):
+    orgs = event.get("organizers", [])
+    cards_html = "".join('<article class="card org">%s<h3>%s</h3>%s</article>' % (
+        '<img class="org-logo" src="%s" alt="%s">' % (esc(o["logo"]), esc(o["name"])) if o.get("logo") else "",
+        '<a href="%s" rel="noopener">%s</a>' % (esc(o["link"]), esc(o["name"])) if o.get("link") else esc(o["name"]),
+        '<p>%s</p>' % md(o["text"]) if o.get("text") else "") for o in orgs)
+    parts = [hero(event["title"], "Организатори", event.get("people", {}).get("organizers_intro", ""))]
+    if orgs:
+        parts.append(block('<h2>Организатор</h2>\n<div class="cards">%s</div>' % cards_html, "", "Организатор"))
+    parts.append(block('<h2>Партньори</h2>\n' + people_grid(event, people, "partners"), "people-block", "Партньори"))
+    return page(event, "organizatori.html", "Организатори", "\n".join(parts), demo, current="organizatori.html",
+                extra_scripts=("people.js",))
 
 
-def razpisanie(event, demo):
-    by_n = {t["n"]: t for t in event.get("topics", [])}
-    parts = [block('<p class="kicker">%s · %s</p>\n<h1>Разписание</h1>' % (
-        esc(date_label(event)), esc(event.get("place", {}).get("name", ""))), "hero small", "Разписание")]
-    for day in event.get("schedule", []):
-        rows = []
-        for s in day.get("slots", []):
-            links = " ".join('<a href="%s">Тема %d: %s</a>' % (topic_page(n), n, esc(by_n[n]["title"]))
-                             for n in s.get("topics", []) if n in by_n)
-            rows.append('<tr><td class="time">%s–%s</td><td><b>%s</b>%s</td></tr>' % (
-                esc(s["from"]), esc(s["to"]), esc(s["title"]), "<br>" + links if links else ""))
-        parts.append(block('<h2>%s <span class="muted">%s</span></h2>\n<table class="slots">%s</table>' % (
-            esc(day.get("label", "")), esc(human_date(day["date"])), "".join(rows)), "", day.get("label")))
-    return page(event, "razpisanie.html", "Разписание", "\n".join(parts), demo, current="razpisanie.html")
+def privacy(event, demo):
+    pv = event["privacy"]
+    parts = [hero(event["title"], pv.get("title", "Поверителност"), pv.get("intro", ""))]
+    for b in pv.get("blocks", []):
+        parts.append(section(b))
+    return page(event, "privacy.html", pv.get("title", "Поверителност"), "\n".join(parts), demo)
 
 
 def form_field(fld, event):
@@ -452,44 +641,55 @@ def form_field(fld, event):
         items = "".join('<label class="opt"><input type="%s" name="%s" value="%s"%s> %s</label>' % (
             kind, name, esc(o), r if t == "single" and i == 0 else "", esc(o)) for i, o in enumerate(opts))
         if fld.get("other"):
-            items += ('<label class="opt other"><input type="%s" name="%s" value="__other"> Друго: '
-                      '<input type="text" name="%s__other" maxlength="200" aria-label="Друго"></label>' % (kind, name, fid))
+            items += ('<label class="opt other"><input type="%s" name="%s" value="__other"> %s: '
+                      '<input type="text" name="%s__other" maxlength="200" aria-label="%s"></label>' % (
+                          kind, name, esc(fld.get("other_label", "Друго")), fid, esc(fld.get("other_label", "Друго"))))
         maxn = ' data-max="%d"' % fld["max"] if t == "multi" and fld.get("max") else ""
         hint = '<p class="help">До %d отговора.</p>' % fld["max"] if maxn else ""
         return '<fieldset class="field" data-field="%s"%s><legend>%s%s</legend>%s%s%s</fieldset>' % (
             fid, maxn, esc(fld["label"]), star, help_, hint, items)
     if t == "consent":
         dep = ' data-required-if="%s"' % esc(",".join(fld.get("required_if", []))) if fld.get("required_if") else ""
-        return '<div class="field consent"%s><label class="opt"><input type="checkbox" name="%s" value="1"%s> %s%s</label>%s</div>' % (
+        return '<div class="field consent"%s><label class="opt"><input type="checkbox" name="%s" value="1"%s> <span>%s%s</span></label>%s</div>' % (
             dep, fid, r, md(fld["label"]), star, help_)
     maxlen = int(fld.get("max_length", 254 if t == "email" else 2000))
+    count = '<p class="help count" data-count-for="f-%s">до %d знака</p>' % (fid, maxlen) if t == "textarea" else ""
     if t == "textarea":
         ctl = '<textarea id="f-%s" name="%s" rows="4" maxlength="%d"%s></textarea>' % (fid, fid, maxlen, r)
     else:
         ctl = '<input id="f-%s" type="%s" name="%s" maxlength="%d"%s%s>' % (
             fid, "email" if t == "email" else "text", fid, maxlen, r, ' autocomplete="email"' if t == "email" else "")
-    return '<div class="field"><label for="f-%s">%s%s</label>%s%s</div>' % (fid, esc(fld["label"]), star, help_, ctl)
+    return '<div class="field"><label for="f-%s">%s%s</label>%s%s%s</div>' % (fid, esc(fld["label"]), star, help_, ctl, count)
 
 
 def form_page(event, f, demo):
-    fields = "\n".join(form_field(x, event) for x in f.get("fields", []))
-    note = ('<p class="notice">Демо: въпросникът не се изпраща.</p>' if demo else "")
-    body = block('<p class="kicker">%s</p>\n<h1>%s</h1>\n<p class="lead">%s</p>\n%s'
+    rows = []
+    for x in f.get("fields", []):
+        if x.get("group"):
+            rows.append('<h2 class="group">%s</h2>' % esc(x["group"]))
+        rows.append(form_field(x, event))
+    note = '<p class="notice">Демо: въпросникът не се изпраща.</p>' if demo else ""
+    body = block('<p class="kicker">%s · %s</p>\n<h1>%s</h1>\n<p class="lead">%s</p>\n%s'
                  '<form class="survey" method="post" action="api/submit.php" data-form="%s" novalidate>\n'
                  '<input type="hidden" name="_form" value="%s">\n'
                  '<div class="hp" aria-hidden="true"><label>Не попълвай<input type="text" name="_hp" tabindex="-1" autocomplete="off"></label></div>\n'
                  '<input type="hidden" name="_t" value="">\n%s\n'
                  '<p><button class="btn" type="submit">Изпрати</button></p>\n<p class="status" role="status" aria-live="polite"></p>\n'
-                 '</form>' % (esc(event["title"]), esc(f["title"]), md(f.get("intro", "")), note, esc(f["id"]), esc(f["id"]), fields),
+                 '</form>' % (esc(event["title"]), esc(date_label(event)), esc(f["title"]), md(f.get("intro", "")), note,
+                              esc(f["id"]), esc(f["id"]), "\n".join(rows)),
                  "form-block", f["title"])
-    return page(event, f["slug"] + ".html", f["title"], body, demo, current=f["slug"] + ".html", extra_scripts=("forms.js",))
+    return page(event, f["slug"] + ".html", f["title"], body, demo, current=f["slug"] + ".html",
+                extra_scripts=("forms.js",), description="%s: %s" % (f["title"], f.get("intro", "")))
 
 
-# ---------- сглобяване ----------
+# ---------- сървърът: какво се приема и в коя таблица ----------
 
 def forms_spec(event):
     """Какво приема api/submit.php: само тези полета, типове и опции. Нищо друго не се записва."""
-    out = {"event": event["slug"], "forms": {}}
+    srv = event.get("server", {})
+    out = {"event": event["slug"], "config_file": srv.get("config_file") or ".organizer/%s.php" % event["slug"],
+           "rate_table": rate_table(event), "rate_limit_per_hour": int(srv.get("rate_limit_per_hour", 10)),
+           "forms": {}}
     for f in event.get("forms", []):
         fields = []
         for x in f.get("fields", []):
@@ -497,6 +697,7 @@ def forms_spec(event):
             if x["type"] in ("single", "multi"):
                 spec["options"] = resolve_options(x, event)
                 spec["other"] = bool(x.get("other"))
+                spec["other_label"] = x.get("other_label", "Друго")
             if x["type"] == "multi" and x.get("max"):
                 spec["max"] = int(x["max"])
             if x["type"] in ("text", "textarea", "email"):
@@ -504,8 +705,28 @@ def forms_spec(event):
             if x.get("required_if"):
                 spec["required_if"] = list(x["required_if"])
             fields.append(spec)
-        out["forms"][f["id"]] = {"title": f["title"], "slug": f["slug"], "fields": fields}
+        out["forms"][f["id"]] = {"title": f["title"], "slug": f["slug"], "table": form_table(event, f), "fields": fields}
     return out
+
+
+def schema_sql(event):
+    """sql/schema.sql — пуска го човек (phpMyAdmin); сайтът сам не създава таблици на живо."""
+    lines = ["-- Сглобено от Shinkansen организатор за „%s“. Пуска се веднъж в базата (phpMyAdmin → SQL)." % event["slug"],
+             "-- Отговорите са JSON в колона answers: само полетата от api/forms.json.", ""]
+    for f in event.get("forms", []):
+        lines.append("-- %s" % f["title"].replace("\n", " "))
+        lines.append("CREATE TABLE IF NOT EXISTS `%s` (\n"
+                     "  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,\n"
+                     "  created_at DATETIME NOT NULL,\n"
+                     "  answers MEDIUMTEXT NOT NULL\n"
+                     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\n" % form_table(event, f))
+    lines.append("-- Ограничение на изпращанията: HMAC на IP адреса (не самият адрес), пази се един час.")
+    lines.append("CREATE TABLE IF NOT EXISTS `%s` (\n"
+                 "  ip_hash CHAR(64) NOT NULL,\n"
+                 "  created_at DATETIME NOT NULL,\n"
+                 "  KEY ip_time (ip_hash, created_at)\n"
+                 ") ENGINE=InnoDB DEFAULT CHARSET=ascii;\n" % rate_table(event))
+    return "\n".join(lines)
 
 
 HTACCESS = """# Сглобено от Shinkansen организатор. Подпапката наследява .htaccess на public_html — провери го първо.
@@ -514,11 +735,62 @@ Options -Indexes
 %(robots)s  Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
-<FilesMatch "^(forms\\.json|lib\\.php)$">
+<FilesMatch "^(forms\\.json|lib\\.php|schema\\.sql|config\\.sample\\.php)$">
   Require all denied
 </FilesMatch>
 """
 
+
+# ---------- проверки след сглобяването ----------
+
+HREF_RE = re.compile(r'\b(?:href|src)="([^"]+)"')
+
+
+def broken_links(out, written):
+    """Вътрешните href/src, които не сочат към файл в изхода. Външните (https:, mailto:) не се пипат."""
+    files = set(written)
+    bad = []
+    for rel in written:
+        if not rel.endswith(".html"):
+            continue
+        with open(os.path.join(out, rel), encoding="utf-8") as f:
+            text = f.read()
+        for target in HREF_RE.findall(text):
+            target = html.unescape(target)
+            if re.match(r"^(https?:|mailto:|tel:|#|javascript:)", target) or target.startswith("//"):
+                continue
+            path = target.split("#")[0].split("?")[0]
+            if not path:
+                continue
+            path = os.path.normpath(os.path.join(os.path.dirname(rel), path)).replace(os.sep, "/")
+            if path.endswith("/"):
+                path += "index.html"
+            if path not in files:
+                bad.append((rel, target))
+    return bad
+
+
+def forbidden_hits(out, written, forbid, forbid_regex=()):
+    """Стари дати и имена, които не бива да останат никъде в сглобеното (publish.forbid_*)."""
+    hits = []
+    rx = [re.compile(r) for r in forbid_regex]
+    for rel in written:
+        if rel.endswith((".png", ".jpg", ".jpeg", ".webp", ".woff", ".woff2", ".ico", ".gif")):
+            continue
+        with open(os.path.join(out, rel), encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        plain = html.unescape(text)
+        for t in forbid:
+            if t in plain:
+                hits.append((rel, t))
+        for r in rx:
+            m = r.search(plain)
+            if m:
+                hits.append((rel, "%s → „%s“" % (r.pattern, m.group(0))))
+    return hits
+
+
+# ---------- сглобяване ----------
 
 def build(folder, out, demo=False):
     event, people = load(folder)
@@ -535,19 +807,36 @@ def build(folder, out, demo=False):
             f.write(text)
         written.append(rel)
 
-    write("index.html", home(event, people, demo))
+    def copy_tree(src, dest_rel):
+        for dirpath, dirnames, filenames in os.walk(src):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            for name in sorted(filenames):
+                if name.startswith("."):
+                    continue
+                rel = os.path.join(dest_rel, os.path.relpath(os.path.join(dirpath, name), src)).replace(os.sep, "/")
+                os.makedirs(os.path.dirname(os.path.join(out, rel)), exist_ok=True)
+                shutil.copyfile(os.path.join(dirpath, name), os.path.join(out, rel))
+                if rel not in written:
+                    written.append(rel)
+
+    copy_tree(os.path.join(HERE, "assets"), "assets")
+    if os.path.isdir(os.path.join(folder, "assets")):
+        copy_tree(os.path.join(folder, "assets"), "assets")   # лого, локални шрифтове — на събитието
+
+    write("index.html", home(event, demo))
     write("programa.html", programa(event, demo))
     for t in event.get("topics", []):
-        write(topic_page(t["n"]), topic(event, t, demo))
+        write(topic_page(t), topic(event, t, demo))
     write("razpisanie.html", razpisanie(event, demo))
+    write("lektori.html", lektori(event, people, demo))
+    write("organizatori.html", organizatori(event, people, demo))
+    if event.get("privacy"):
+        write("privacy.html", privacy(event, demo))
     for f in event.get("forms", []):
         write(f["slug"] + ".html", form_page(event, f, demo))
-    write("people.json", json.dumps({k: people.get(k, []) for k in ("speakers", "partners", "placeholders")},
-                                    ensure_ascii=False, indent=2) + "\n")
-    os.makedirs(os.path.join(out, "assets"), exist_ok=True)
-    for name in sorted(os.listdir(os.path.join(HERE, "assets"))):
-        shutil.copyfile(os.path.join(HERE, "assets", name), os.path.join(out, "assets", name))
-        written.append("assets/" + name)
+    for kind, rel in people_files(event).items():
+        write(rel, json.dumps(people.get(kind, []), ensure_ascii=False, indent=1) + "\n")
+
     indexable = bool(event.get("publish", {}).get("indexable"))
     if not demo and event.get("forms"):
         write("api/forms.json", json.dumps(forms_spec(event), ensure_ascii=False, indent=1) + "\n")
@@ -555,47 +844,48 @@ def build(folder, out, demo=False):
             with open(os.path.join(HERE, "php", name), encoding="utf-8") as f:
                 write("api/" + name, f.read())
         with open(os.path.join(HERE, "php", "export.php"), encoding="utf-8") as f:
-            write("export/index.php", f.read())
+            write("admin/export.php", f.read())
+        write("sql/schema.sql", schema_sql(event))
+        with open(os.path.join(HERE, "php", "config.sample.php"), encoding="utf-8") as f:
+            write("sql/config.sample.php", f.read())
+        write("sql/.htaccess", "Require all denied\n")
     write(".htaccess", HTACCESS % {"robots": "" if indexable else '  Header always set X-Robots-Tag "noindex, nofollow"\n'})
     base = event.get("publish", {}).get("base_url")
     if indexable and base:
         pages = [p for p in written if p.endswith(".html")]
         write("sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n%s</urlset>\n'
               % "".join("  <url><loc>%s</loc></url>\n" % esc(base.rstrip("/") + "/" + ("" if p == "index.html" else p)) for p in pages))
-    hits = forbidden_hits(out, written, event.get("publish", {}).get("forbid_text", []))
-    if hits:
-        raise ValueError("\n".join("забранен текст „%s“ в %s" % (t, rel) for rel, t in hits))
+
+    problems = ["счупена връзка в %s: %s" % hit for hit in broken_links(out, written)]
+    pub = event.get("publish", {})
+    problems += ["забранен текст „%s“ в %s" % (t, rel)
+                 for rel, t in forbidden_hits(out, written, pub.get("forbid_text", []), pub.get("forbid_regex", []))]
+    if problems:
+        raise ValueError("\n".join(problems))
     return written, todo
-
-
-def forbidden_hits(out, written, forbid):
-    """Стари дати и имена, които не бива да останат никъде в сглобеното (publish.forbid_text)."""
-    hits = []
-    for rel in written:
-        with open(os.path.join(out, rel), encoding="utf-8") as f:
-            text = f.read()
-        for t in forbid:
-            if t in text or html.escape(t) in text:
-                hits.append((rel, t))
-    return hits
 
 
 def cmd_new(dest):
     if os.path.exists(os.path.join(dest, "event.json")):
         print("%s: вече има event.json — нищо не пипам" % dest, file=sys.stderr)
         return 2
-    os.makedirs(dest, exist_ok=True)
-    for name in ("event.json", "people.json"):
-        shutil.copyfile(os.path.join(EXAMPLE, name), os.path.join(dest, name))
-    print("ново събитие: %s (event.json, people.json от примера — смени slug, заглавие, дати)" % dest)
+    for dirpath, _, filenames in os.walk(EXAMPLE):
+        for name in filenames:
+            src = os.path.join(dirpath, name)
+            dst = os.path.join(dest, os.path.relpath(src, EXAMPLE))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+    print("ново събитие: %s (копие на примера — смени slug, заглавие, дати)" % dest)
     return 0
 
 
-def report(errors, todo):
+def report(errors, todo, waits=()):
     for e in errors:
         print("ГРЕШКА  " + e)
     for t in todo:
         print("липсва  " + t)
+    for path, text in waits:
+        print("чака    %s: %s" % (path, text if len(text) <= 90 else text[:87] + "…"))
     if not errors and not todo:
         print("готово: няма грешки и липси")
 
@@ -621,8 +911,10 @@ def main(argv=None):
         print("не мога да прочета %s: %s" % (args.folder, e), file=sys.stderr)
         return 1
     errors, todo = check(event, people)
+    marker = event.get("publish", {}).get("pending_marker", "[ЧАКА")
+    waits = pending(event, marker) + pending(people, marker, "data")
     if args.cmd == "check":
-        report(errors, todo)
+        report(errors, todo, waits)
         return 1 if errors else 0
     if errors:
         report(errors, [])
@@ -633,7 +925,7 @@ def main(argv=None):
         report(str(e).splitlines(), [])
         return 1
     print("%d файла в %s%s" % (len(written), args.out, " (демо)" if args.demo else ""))
-    report([], todo)
+    report([], todo, waits)
     return 0
 
 

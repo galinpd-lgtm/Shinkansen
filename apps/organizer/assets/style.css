@@ -1,9 +1,10 @@
-/* Shinkansen организатор — общ стил. Цветовете и шрифтовете идват от theme в event.json (--accent, --ink, --paper). */
+/* Shinkansen организатор — общ стил. Цветовете и шрифтовете идват от theme в event.json (--accent, --ink, --paper, --hero-*).
+   Кирилица: без курсив в заглавията и без разредка на главни букви. */
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.55 var(--font-body);}
 a{color:inherit;text-decoration-color:var(--accent);text-underline-offset:.2em}
-h1,h2,h3{font-family:var(--font-display);line-height:1.1;margin:0 0 .5em;letter-spacing:-.01em}
+h1,h2,h3{font-family:var(--font-display);font-style:normal;line-height:1.12;margin:0 0 .5em;letter-spacing:0}
 h1{font-size:clamp(2.2rem,6vw,4.6rem)}
 h2{font-size:clamp(1.6rem,3.5vw,2.6rem)}
 h3{font-size:1.15rem}
@@ -11,24 +12,29 @@ p{margin:0 0 1em}
 .muted{opacity:.62;font-weight:400}
 .wrap{max-width:1120px;margin:0 auto;padding:0 16px}
 
-.ribbon{background:var(--ink);color:var(--paper);font-size:.82rem;letter-spacing:.04em;text-align:center;padding:.4em 16px}
+.ribbon{background:var(--hero-bg);color:var(--hero-ink);font-size:.86rem;text-align:center;padding:.45em 16px;border-bottom:1px solid color-mix(in srgb,var(--hero-ink) 15%,transparent)}
+.ribbon a{color:inherit}
 .top{display:flex;flex-wrap:wrap;gap:.5em 1.5em;align-items:center;justify-content:space-between;max-width:1120px;margin:0 auto;padding:14px 16px}
 .brand{font-family:var(--font-display);font-weight:700;font-size:1.25rem;text-decoration:none}
+.logo{display:block;height:32px;width:auto}
 .top nav{display:flex;flex-wrap:wrap;gap:.3em 1.2em}
 .top nav a{text-decoration:none;font-weight:600}
 .top nav a[aria-current]{color:var(--accent)}
 
 .block{padding:clamp(40px,7vw,88px) 0;border-top:1px solid color-mix(in srgb,var(--ink) 10%,transparent)}
-.hero{background:var(--ink);color:var(--paper);border:0}
+.hero{background:var(--hero-bg);color:var(--hero-ink);border:0}
 .hero .kicker{color:var(--accent)}
 .hero.small{padding:clamp(32px,5vw,56px) 0}
-.kicker{font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:.82rem;color:var(--accent);margin-bottom:1em}
+.kicker{font-family:var(--font-mono);font-weight:600;font-size:.9rem;color:var(--accent);margin-bottom:1em}
 .lead{font-size:clamp(1.1rem,2vw,1.35rem);max-width:46em}
 .meta{opacity:.75}
 .actions{display:flex;flex-wrap:wrap;gap:.6em;margin-top:1.5em}
 .btn{display:inline-block;background:var(--accent);color:#fff;border:2px solid var(--accent);border-radius:999px;padding:.7em 1.4em;font:700 1rem var(--font-body);text-decoration:none;cursor:pointer}
 .btn.ghost{background:transparent;color:inherit;border-color:currentColor}
 .btn:focus-visible,a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.stats{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.stat b{display:block;font-family:var(--font-display);font-size:clamp(2.4rem,6vw,3.6rem);line-height:1;color:var(--accent)}
+.stat span{display:block;margin-top:.4em}
 .cta{text-align:center}.cta .lead{margin:0 auto 1em}
 
 .cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
@@ -65,20 +71,30 @@ p{margin:0 0 1em}
 .slots td{padding:12px 8px;border-bottom:1px solid color-mix(in srgb,var(--ink) 12%,transparent);vertical-align:top}
 .slots .time{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--accent);font-weight:700;width:8em}
 .slots a{font-size:.95rem}
+.slots tr.pause td{opacity:.65}
+.table-wrap{overflow-x:auto;margin:0 0 1em}
+.grid{width:100%;border-collapse:collapse;min-width:520px}
+.grid th,.grid td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid color-mix(in srgb,var(--ink) 14%,transparent)}
+.grid th{color:var(--accent);font-weight:700}
+.concepts{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin:0}
+.concepts div{padding:16px;border-radius:14px;background:color-mix(in srgb,var(--ink) 4%,var(--paper))}
+.concepts dt{font-weight:700;color:var(--accent);margin-bottom:.3em}.concepts dd{margin:0}
+.org-logo{display:block;max-height:56px;max-width:180px;margin-bottom:12px}
+.survey .group{font-size:1.3rem;margin:1.6em 0 .8em;padding-top:.8em;border-top:1px solid color-mix(in srgb,var(--ink) 14%,transparent)}
 
 .survey{max-width:720px}
 .field{border:0;margin:0 0 22px;padding:0}
 .field>legend,.field>label:not(.opt){display:block;font-weight:700;margin-bottom:.4em;padding:0}
 .opt{display:flex;gap:.5em;align-items:center;margin:.3em 0;font-weight:400}
 .opt.other input[type=text]{flex:1;min-width:0}
-input[type=text],input[type=email],textarea{width:100%;font:inherit;padding:.6em .7em;border-radius:10px;border:1px solid color-mix(in srgb,var(--ink) 25%,transparent);background:#fff;color:#15151a}
+input[type=text],input[type=email],textarea{width:100%;font:inherit;padding:.6em .7em;border-radius:10px;border:1px solid color-mix(in srgb,var(--ink) 30%,transparent);background:color-mix(in srgb,var(--ink) 3%,var(--paper));color:var(--ink)}
 input[type=radio],input[type=checkbox]{width:1.15em;height:1.15em;accent-color:var(--accent);flex:none}
 .help{font-size:.92rem;opacity:.72;margin:.2em 0 .5em}
 .req{color:var(--accent)}
-.field.invalid>legend,.field.invalid>label:not(.opt),.field.invalid.consent .opt{color:#c0392b}
+.field.invalid>legend,.field.invalid>label:not(.opt),.field.invalid.consent .opt{color:#e0533f}
 .hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
 .notice{background:color-mix(in srgb,var(--accent) 15%,var(--paper));padding:.7em 1em;border-radius:10px}
-.status{font-weight:700}.status.ok{color:#1e7d46}.status.bad{color:#c0392b}
+.status{font-weight:700}.status.ok{color:#2e9e5b}.status.bad{color:#e0533f}
 
 .foot{display:flex;flex-wrap:wrap;gap:1em;justify-content:space-between;align-items:center;max-width:1120px;margin:0 auto;padding:28px 16px;font-size:.9rem;opacity:.8}
 .present-toggle{font:inherit;background:none;border:1px solid currentColor;border-radius:999px;padding:.35em 1em;color:inherit;cursor:pointer}
@@ -92,6 +108,7 @@ html.present .block.on{display:flex;align-items:center}
 html.present .block .wrap{max-width:92vw;width:100%}
 html.present h1{font-size:2.6rem}html.present h2{font-size:1.9rem}html.present h3{font-size:1.1rem}
 html.present .lead,html.present .ticks li,html.present .steps{font-size:1.05rem}
+html.present .grid{min-width:0}html.present .grid th,html.present .grid td{padding:.35em .5em}
 html.present .card,html.present .lab-col{padding:.8em}
 html.present .people{grid-template-columns:repeat(auto-fill,minmax(7em,1fr))}
 html.present .avatar{width:4em;height:4em}

@@ -8,6 +8,13 @@
     var demo = document.body.hasAttribute("data-demo");
     var t = form.querySelector("input[name=_t]");
 
+    Array.prototype.forEach.call(form.querySelectorAll("[data-count-for]"), function (c) {
+      var x = document.getElementById(c.getAttribute("data-count-for"));
+      var max = x.maxLength;
+      function upd() { c.textContent = x.value.length + " / " + max + " знака"; }
+      x.addEventListener("input", upd);
+    });
+
     function say(text, ok) { status.textContent = text; status.className = "status " + (ok ? "ok" : "bad"); }
 
     function collect() {
@@ -56,7 +63,7 @@
                            body: JSON.stringify(collect()) })
         .then(function (r) { return r.json().catch(function () { return { ok: false }; }).then(function (j) { j.status = r.status; return j; }); })
         .then(function (j) {
-          if (j.ok) { form.reset(); say("Благодарим! Отговорите са записани.", true); }
+          if (j.ok) { form.reset(); form.querySelectorAll("[data-count-for]").forEach(function (c) { c.textContent = ""; }); say("Благодарим! Отговорите са записани.", true); }
           else { say(j.error || "Не успях да запиша отговорите. Опитай пак след малко.", false); btn.disabled = false; }
         })
         .catch(function () { say("Няма връзка. Опитай пак след малко.", false); btn.disabled = false; });

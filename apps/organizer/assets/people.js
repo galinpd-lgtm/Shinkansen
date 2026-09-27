@@ -1,5 +1,6 @@
 // Лектори и партньори в движение: страницата идва с профилите от сглобяването,
-// а тук ги опресняваме от people.json — човек се добавя с един ред, без ново сглобяване.
+// а тук ги опресняваме от data/*.json — човек се добавя с един запис, без ново сглобяване.
+// Запис с name е потвърден човек; запис само със slot е празно място („Лектор · Памет — очаква потвърждение“).
 (function () {
   "use strict";
   var boxes = document.querySelectorAll("[data-people]");
@@ -11,17 +12,23 @@
     if (text) e.textContent = text;
     return e;
   }
-  function safeUrl(u) { return /^(https:\/\/|[\w.\/-]+$)/.test(u || "") && !/^javascript:/i.test(u) ? u : null; }
+  function safeUrl(u) { return /^(https:\/\/|[\w][\w.\/#-]*$)/.test(u || "") && (u || "").indexOf("..") < 0 ? u : null; }
 
-  function card(p, kind) {
-    var a = el("article", p ? "person" : "person empty");
-    var photo = p && safeUrl(p.photo);
+  function card(p, who) {
+    var named = p && p.name;
+    var a = el("article", named ? "person" : "person empty");
+    var photo = named && safeUrl(p.photo);
     var av;
-    if (photo) { av = el("img", "avatar"); av.src = photo; av.alt = ""; av.loading = "lazy"; }
+    if (photo) { av = el("img", "avatar"); av.src = photo; av.alt = p.name; av.loading = "lazy"; }
     else { av = el("div", "avatar"); av.setAttribute("aria-hidden", "true"); }
     a.appendChild(av);
     var h = el("h3");
-    if (!p) { h.textContent = kind === "speakers" ? "Лектор" : "Партньор"; a.appendChild(h); a.appendChild(el("p", "muted", "Предстои")); return a; }
+    if (!named) {
+      h.textContent = p && p.slot ? who + " · " + p.slot : who;
+      a.appendChild(h);
+      a.appendChild(el("p", "muted", "очаква потвърждение"));
+      return a;
+    }
     var link = safeUrl(p.link);
     if (link) { var l = el("a", null, p.name); l.href = link; l.rel = "noopener"; h.appendChild(l); } else h.textContent = p.name;
     a.appendChild(h);
@@ -30,14 +37,16 @@
     return a;
   }
 
-  fetch("people.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
-    if (!data) return;
-    Array.prototype.forEach.call(boxes, function (box) {
-      var kind = box.getAttribute("data-people");
-      var list = (data[kind] || []).filter(function (p) { return p && p.name; });
-      var n = Math.max(list.length, (data.placeholders || {})[kind] || 0);
+  Array.prototype.forEach.call(boxes, function (box) {
+    var file = box.getAttribute("data-people");
+    var min = parseInt(box.getAttribute("data-min") || "0", 10);
+    var who = /partn/.test(file) ? "Партньор" : "Лектор";
+    fetch(file, { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (list) {
+      if (!Array.isArray(list)) return;
+      list = list.filter(function (p) { return p && (p.name || p.slot); });
+      while (list.length < min) list.push(null);
       box.textContent = "";
-      for (var k = 0; k < n; k++) box.appendChild(card(list[k] || null, kind));
-    });
-  }).catch(function () { /* без мрежа остават профилите от сглобяването */ });
+      list.forEach(function (p) { box.appendChild(card(p, who)); });
+    }).catch(function () { /* без мрежа остават профилите от сглобяването */ });
+  });
 })();

@@ -31,11 +31,13 @@ def example():
     return organizer.load(EXAMPLE)
 
 
-def write_event(folder, event, people=None):
+def write_event(folder, event, speakers=(), partners=()):
     with open(os.path.join(folder, "event.json"), "w", encoding="utf-8") as f:
         json.dump(event, f, ensure_ascii=False)
-    with open(os.path.join(folder, "people.json"), "w", encoding="utf-8") as f:
-        json.dump(people or {"speakers": [], "partners": []}, f, ensure_ascii=False)
+    os.makedirs(os.path.join(folder, "data"), exist_ok=True)
+    for name, lst in (("lektori", speakers), ("partnyori", partners)):
+        with open(os.path.join(folder, "data", name + ".json"), "w", encoding="utf-8") as f:
+            json.dump(list(lst), f, ensure_ascii=False)
 
 
 class Check(unittest.TestCase):
@@ -74,8 +76,26 @@ class Check(unittest.TestCase):
         self.bad(lambda e, p: e["theme"].update(fonts_css="https://evil.example/f.css"), "fonts_css")
 
     def test_person_without_name_or_js_link(self):
-        self.bad(lambda e, p: p.update(speakers=[{"role": "x"}]), "липсва name")
+        self.bad(lambda e, p: p.update(speakers=[{"role": "x"}]), "иска name")
         self.bad(lambda e, p: p.update(speakers=[{"name": "А", "link": "javascript:alert(1)"}]), ".link")
+
+    def test_table_row_width(self):
+        self.bad(lambda e, p: e["topics"][1]["sections"][0]["table"]["rows"].append(["само една"]), "всеки ред")
+
+    def test_duplicate_form_table(self):
+        self.bad(lambda e, p: [f.update(table="edna") for f in e["forms"]], "таблица")
+
+    def test_config_file_outside_home(self):
+        self.bad(lambda e, p: e["server"].update(config_file="../etc/x.php"), "config_file")
+
+    def test_bad_forbid_regex(self):
+        self.bad(lambda e, p: e["publish"].update(forbid_regex=["(("]), "forbid_regex")
+
+    def test_pending_markers_listed(self):
+        event, people = example()
+        waits = organizer.pending(event, "[ЧАКА") + organizer.pending(people, "[ЧАКА", "data")
+        self.assertEqual([w[0] for w in waits], ["event.place.note", "event.topics[0].source.text",
+                                                 "event.privacy.blocks[0].list[1]"])
 
     def test_required_if_points_to_missing_field(self):
         self.bad(lambda e, p: e["forms"][0]["fields"][-1].update(required_if=["nyama"]), "required_if")
@@ -98,9 +118,11 @@ class Build(unittest.TestCase):
             return f.read()
 
     def test_pages(self):
-        for rel in ("index.html", "programa.html", "razpisanie.html", "anketa.html", "tehnika.html",
-                    "tema-01.html", "tema-02.html", "tema-03.html", "people.json", "api/forms.json",
-                    "api/submit.php", "api/lib.php", "export/index.php", ".htaccess", "assets/present.js"):
+        for rel in ("index.html", "programa.html", "razpisanie.html", "lektori.html", "organizatori.html",
+                    "privacy.html", "anketa.html", "tehnika.html", "tema-01-parvi-razgovor.html",
+                    "tema-02-pamet.html", "tema-03-zashtita.html", "data/lektori.json", "data/partnyori.json",
+                    "api/forms.json", "api/submit.php", "api/lib.php", "admin/export.php", "sql/schema.sql",
+                    "sql/config.sample.php", "sql/.htaccess", ".htaccess", "assets/present.js"):
             self.assertIn(rel, self.written)
 
     def test_hidden_until_go(self):
@@ -132,21 +154,70 @@ class Build(unittest.TestCase):
                 self.assertIn('src="assets/present.js"', page, rel)
 
     def test_lab_has_all_roles_in_order(self):
-        page = self.read("tema-01.html")
+        page = self.read("tema-01-parvi-razgovor.html")
         labels = re.findall(r'<article class="lab-col"><h3>([^<]+)</h3>', page)
         self.assertEqual(labels, [r["label"] for r in self.event["lab_roles"]])
         self.assertIn("--cols:4", page)
 
     def test_topic_sections_and_demo(self):
-        page = self.read("tema-02.html")
+        page = self.read("tema-02-pamet.html")
         self.assertIn("<h2>Видове информация</h2>", page)
+        self.assertIn("<th>Къде се обработва</th>", page)
         self.assertIn("<h2>Бази</h2>", page)
         self.assertIn("Демо на живо", page)
-        self.assertNotIn('class="block demo"', self.read("tema-03.html"))
+        order = [page.index(h) for h in ("<h2>Видове информация</h2>", "Демо на живо", "<h2>Лаборатория</h2>",
+                                         "<h2>Какво отнасяш вкъщи</h2>")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn('class="stat"><b>до 10</b>', self.read("index.html"))
+        one = self.read("tema-01-parvi-razgovor.html")
+        self.assertIn('class="block source"', one)
+        self.assertIn("<dt>Роля</dt>", one)
+        self.assertIn("Как да поставя задача", one)
+        self.assertNotIn('class="block demo"', self.read("tema-03-zashtita.html"))
 
-    def test_placeholders_for_people(self):
-        page = self.read("index.html")
-        self.assertEqual(page.count('class="person empty"'), 8)
+    def test_slots_and_placeholders_for_people(self):
+        page = self.read("lektori.html")
+        self.assertEqual(page.count('class="person empty"'), 3)
+        self.assertIn("Лектор · Памет и бази данни", page)
+        self.assertIn("очаква потвърждение", page)
+        self.assertEqual(self.read("organizatori.html").count('class="person empty"'), 4)
+        self.assertIn("Примерна организация ЕООД", self.read("organizatori.html"))
+
+    def test_present_chain_across_pages(self):
+        order = organizer.page_order(self.event)
+        self.assertEqual(order[:3], ["index.html", "programa.html", "tema-01-parvi-razgovor.html"])
+        page = self.read("tema-01-parvi-razgovor.html")
+        self.assertIn('<link rel="prev" href="programa.html">', page)
+        self.assertIn('<link rel="next" href="tema-02-pamet.html">', page)
+
+    def test_schema_sql_one_table_per_form(self):
+        sql = self.read("sql/schema.sql")
+        for t in ("primer_intenziv_zapis", "primer_intenziv_tehnika", "primer_intenziv_rate"):
+            self.assertIn("CREATE TABLE IF NOT EXISTS `%s`" % t, sql)
+        self.assertIn("Require all denied", self.read("sql/.htaccess"))
+
+    def test_no_uppercase_tracking(self):
+        css = self.read("assets/style.css")
+        self.assertNotIn("uppercase", css)
+        self.assertNotRegex(css, r"letter-spacing:\s*\.\d")
+
+    def test_broken_link_stops_build(self):
+        event = copy.deepcopy(self.event)
+        event["tagline"] = "Виж [тук](nyama.html)."
+        with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as out:
+            write_event(src, event)
+            with self.assertRaises(ValueError) as cm:
+                organizer.build(src, out)
+            self.assertIn("nyama.html", str(cm.exception))
+
+    def test_forbid_regex(self):
+        event = copy.deepcopy(self.event)
+        event["brand"]["legal"] = "Примерна организация ООД"
+        with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as out:
+            write_event(src, event)
+            with self.assertRaises(ValueError) as cm:
+                organizer.build(src, out)
+            self.assertIn("ООД", str(cm.exception))
 
     def test_form_options_from_topics(self):
         page = self.read("anketa.html")
@@ -169,13 +240,13 @@ class Build(unittest.TestCase):
             write_event(src, event)
             with self.assertRaises(ValueError) as cm:
                 organizer.build(src, out)
-            self.assertIn("tema-02.html", str(cm.exception))
+            self.assertIn("tema-02-pamet.html", str(cm.exception))
             self.assertEqual(organizer.main(["build", src, out]), 1)
 
     def test_demo_has_no_php(self):
         with tempfile.TemporaryDirectory() as out:
             written, _ = organizer.build(EXAMPLE, out, demo=True)
-            self.assertFalse(any(w.startswith(("api/", "export/")) for w in written))
+            self.assertFalse(any(w.startswith(("api/", "admin/", "sql/")) for w in written))
             with open(os.path.join(out, "anketa.html"), encoding="utf-8") as f:
                 self.assertIn('data-demo="1"', f.read())
 
@@ -184,17 +255,17 @@ class Build(unittest.TestCase):
         event["title"] = '<script>alert(1)</script>'
         event["topics"][0]["summary"] = '**смело** [връзка](javascript:alert(1)) <img src=x>'
         with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as out:
-            write_event(src, event, {"speakers": [{"name": "<b>Х</b>", "link": "https://example.org/x"}]})
+            write_event(src, event, speakers=[{"name": "<b>Х</b>", "link": "https://example.org/x"}])
             organizer.build(src, out)
-            for rel in ("index.html", "tema-01.html"):
+            for rel in ("index.html", "tema-01-parvi-razgovor.html", "lektori.html"):
                 with open(os.path.join(out, rel), encoding="utf-8") as f:
                     page = f.read()
                 self.assertNotIn("<script>alert", page)
                 self.assertNotIn('href="javascript:', page)
                 self.assertNotIn("<img src=x>", page)
-            with open(os.path.join(out, "tema-01.html"), encoding="utf-8") as f:
+            with open(os.path.join(out, "tema-01-parvi-razgovor.html"), encoding="utf-8") as f:
                 self.assertIn("<b>смело</b>", f.read())
-            with open(os.path.join(out, "index.html"), encoding="utf-8") as f:
+            with open(os.path.join(out, "lektori.html"), encoding="utf-8") as f:
                 self.assertIn("&lt;b&gt;Х&lt;/b&gt;", f.read())
 
 
@@ -220,10 +291,10 @@ class Cli(unittest.TestCase):
 ROUTER = """<?php
 // Тестов рутер: за export/ слага REMOTE_USER, както би го сложил сървърът след вход с парола.
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-if (strpos($path, '/export/') === 0) {
+if (strpos($path, '/admin/') === 0) {
     if (isset($_SERVER['HTTP_X_TEST_LOCKED'])) { $_SERVER['REMOTE_USER'] = 'test'; }
-    chdir(__DIR__ . '/export');
-    require __DIR__ . '/export/index.php';
+    chdir(__DIR__ . '/admin');
+    require __DIR__ . '/admin/export.php';
     return true;
 }
 return false;
@@ -243,7 +314,7 @@ class LivePhp(unittest.TestCase):
             f.write(ROUTER)
         cls.cfg = os.path.join(cls.tmp.name, "cfg.php")
         with open(cls.cfg, "w") as f:
-            f.write("<?php return ['db' => ['dsn' => 'sqlite:%s', 'prefix' => 't_']];"
+            f.write("<?php return ['db' => ['dsn' => 'sqlite:%s'], 'auto_create' => true, 'salt' => 'test'];"
                     % os.path.join(cls.tmp.name, "db.sqlite"))
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
@@ -297,12 +368,12 @@ class LivePhp(unittest.TestCase):
         self.assertEqual(self.req("api/submit.php", dict(ok, _hp="bot"))[0], 200)
         self.assertEqual(self.req("api/submit.php", dict(ok, _t="1"))[0], 200)
         # износ без заключена папка → отказ
-        self.assertEqual(self.req("export/")[0], 403)
-        self.assertEqual(self.req("export/", headers={"Authorization": "Basic eDp5"})[0], 403)
-        code, page = self.req("export/", headers={"X-Test-Locked": "1"})
+        self.assertEqual(self.req("admin/")[0], 403)
+        self.assertEqual(self.req("admin/", headers={"Authorization": "Basic eDp5"})[0], 403)
+        code, page = self.req("admin/", headers={"X-Test-Locked": "1"})
         self.assertEqual(code, 200)
         self.assertIn("?form=zapis", page)
-        code, text = self.req("export/?form=zapis", headers={"X-Test-Locked": "1"})
+        code, text = self.req("admin/?form=zapis", headers={"X-Test-Locked": "1"})
         rows = list(csv.reader(io.StringIO(text)))
         self.assertEqual(len(rows), 2, rows)          # заглавие + един отговор (ботовете не са записани)
         head, row = rows
@@ -312,9 +383,17 @@ class LivePhp(unittest.TestCase):
         self.assertEqual(rec["Какво искаш да можеш след интензива?"], "'=CMD()")
         self.assertNotIn("не се пази", text)
 
+    def test_4_rate_limit(self):
+        ok = {"_form": "tehnika", "mashina": "Свой лаптоп", "problem": "x", "lichni_danni": "Не",
+              "ime": "А", "email": "a@example.org", "saglasie": "1", "_t": "9"}
+        codes = [self.req("api/submit.php", ok)[0] for _ in range(12)]
+        self.assertIn(429, codes)
+        self.assertLessEqual(codes.count(200), 10)
+
     def test_3_plain_post_redirects(self):
         url = "api/submit.php"
-        data = {"_form": "tehnika", "mashina": "Свой лаптоп", "problem": "Бавни оферти", "lichni_danni": "Не"}
+        data = {"_form": "tehnika", "mashina": "Свой лаптоп", "problem": "Бавни оферти", "lichni_danni": "Не",
+                "ime": "Ива", "email": "iva@example.org", "saglasie": "1"}
 
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *a, **k):

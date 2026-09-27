@@ -1,6 +1,7 @@
 <?php
 // Приема отговор на въпросник: JSON (от forms.js) или обикновен POST (без JS).
-// Записва само полетата от forms.json в базата; паролата е в config извън public_html.
+// Записва само полетата от forms.json, всеки въпросник в своя таблица; паролата е в config извън public_html.
+// Без имейли, без бисквитки, без IP адреси в отговорите.
 
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
@@ -23,7 +24,7 @@ function reply(bool $ok, int $code, string $msg, array $extra = [], string $back
         header('Content-Type: text/html; charset=utf-8');
         echo '<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>Въпросник</title>'
             . '<p>' . htmlspecialchars($ok ? 'Благодарим! Отговорите са записани.' : $msg, ENT_QUOTES, 'UTF-8') . '</p>'
-            . '<p><a href="javascript:history.back()">Назад</a></p>';
+            . '<p><a href="../index.html">Към началото</a></p>';
     }
     exit;
 }
@@ -71,12 +72,15 @@ if ($errors) {
 }
 
 try {
-    $cfg = organizer_config($spec['event']);
+    $cfg = organizer_config($spec);
     $pdo = organizer_pdo($cfg);
-    $table = organizer_table($cfg);
-    organizer_ensure_table($pdo, $table);
-    $st = $pdo->prepare("INSERT INTO `$table` (event, form, created_at, answers) VALUES (?, ?, ?, ?)");
-    $st->execute([$spec['event'], $formId, gmdate('Y-m-d H:i:s'), json_encode($answers, JSON_UNESCAPED_UNICODE)]);
+    organizer_auto_create($pdo, $cfg, $spec);
+    if (!organizer_rate_ok($pdo, $cfg, $spec, (string)($_SERVER['REMOTE_ADDR'] ?? ''))) {
+        reply(false, 429, 'Твърде много изпращания от този адрес. Опитай пак след час.');
+    }
+    $table = organizer_safe_table($form['table']);
+    $st = $pdo->prepare("INSERT INTO `$table` (created_at, answers) VALUES (?, ?)");
+    $st->execute([gmdate('Y-m-d H:i:s'), json_encode($answers, JSON_UNESCAPED_UNICODE)]);
 } catch (Throwable $e) {
     error_log('organizer: ' . $e->getMessage());
     reply(false, 500, 'Не успях да запиша отговорите. Опитай пак след малко.');

@@ -1,5 +1,5 @@
 <?php
-// Износ на отговорите в CSV. Папката export/ се заключва с парола от cPanel („Directory Privacy“).
+// Износ на отговорите в CSV. Папката admin/ се заключва с парола от cPanel („Directory Privacy“).
 // Без заключване страницата отказва: проверяваме, че сървърът е поискал вход (REMOTE_USER).
 // PHP_AUTH_USER не се ползва — при някои сървъри идва направо от заглавката на заявката, без проверка.
 
@@ -14,16 +14,15 @@ $user = $_SERVER['REMOTE_USER'] ?? $_SERVER['REDIRECT_REMOTE_USER'] ?? '';
 if ($user === '') {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
-    echo "Папката export/ не е заключена с парола. Заключи я от cPanel → Directory Privacy и опитай пак.\n";
+    echo "Папката admin/ не е заключена с парола. Заключи я от cPanel → Directory Privacy и опитай пак.\n";
     exit;
 }
 
 try {
     $spec = organizer_spec();
-    $cfg = organizer_config($spec['event']);
+    $cfg = organizer_config($spec);
     $pdo = organizer_pdo($cfg);
-    $table = organizer_table($cfg);
-    organizer_ensure_table($pdo, $table);
+    organizer_auto_create($pdo, $cfg, $spec);
 } catch (Throwable $e) {
     error_log('organizer export: ' . $e->getMessage());
     http_response_code(500);
@@ -34,11 +33,14 @@ try {
 
 $formId = is_string($_GET['form'] ?? null) ? $_GET['form'] : '';
 if (!isset($spec['forms'][$formId])) {
-    $st = $pdo->prepare("SELECT form, COUNT(*) n, MAX(created_at) last FROM `$table` WHERE event = ? GROUP BY form");
-    $st->execute([$spec['event']]);
     $counts = [];
-    foreach ($st as $r) {
-        $counts[$r['form']] = $r;
+    foreach ($spec['forms'] as $id => $f) {
+        $t = organizer_safe_table($f['table']);
+        try {
+            $counts[$id] = $pdo->query("SELECT COUNT(*) n, MAX(created_at) last FROM `$t`")->fetch();
+        } catch (Throwable $e) {
+            $counts[$id] = ['n' => 0, 'last' => 'няма таблица — пусни sql/schema.sql'];
+        }
     }
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>Износ</title>'
@@ -63,8 +65,8 @@ foreach ($form['fields'] as $f) {
     $head[] = $f['label'];
 }
 fputcsv($out, $head);
-$st = $pdo->prepare("SELECT id, created_at, answers FROM `$table` WHERE event = ? AND form = ? ORDER BY id");
-$st->execute([$spec['event'], $formId]);
+$table = organizer_safe_table($form['table']);
+$st = $pdo->query("SELECT id, created_at, answers FROM `$table` ORDER BY id");
 foreach ($st as $r) {
     $a = json_decode($r['answers'], true) ?: [];
     $row = [$r['id'], $r['created_at']];

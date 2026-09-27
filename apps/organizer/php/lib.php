@@ -16,21 +16,25 @@ function organizer_spec(): array
     return $spec;
 }
 
-// Config: ORGANIZER_CONFIG от средата, иначе <родителят на DOCUMENT_ROOT>/.organizer/<slug>.php —
-// на споделен хостинг това е домашната папка, извън public_html.
-function organizer_config_path(string $slug): string
+// Config: ORGANIZER_CONFIG от средата, иначе config_file от forms.json спрямо родителя на DOCUMENT_ROOT —
+// на споделен хостинг това е домашната папка, извън public_html (напр. ~/ai_start_config.php).
+function organizer_config_path(array $spec): string
 {
     $env = getenv('ORGANIZER_CONFIG');
     if ($env) {
         return $env;
     }
+    $rel = (string)($spec['config_file'] ?? '');
+    if ($rel === '' || strpos($rel, '..') !== false || $rel[0] === '/') {
+        throw new RuntimeException('forms.json: невалиден config_file');
+    }
     $docroot = rtrim((string)($_SERVER['DOCUMENT_ROOT'] ?? ''), '/');
-    return dirname($docroot) . '/.organizer/' . $slug . '.php';
+    return dirname($docroot) . '/' . $rel;
 }
 
-function organizer_config(string $slug): array
+function organizer_config(array $spec): array
 {
-    $path = organizer_config_path($slug);
+    $path = organizer_config_path($spec);
     if (!is_file($path)) {
         throw new RuntimeException('липсва config извън публичната папка');
     }
@@ -39,10 +43,6 @@ function organizer_config(string $slug): array
         if (!isset($cfg['db'][$k])) {
             throw new RuntimeException('config: липсва db.' . $k);
         }
-    }
-    $prefix = $cfg['db']['prefix'] ?? '';
-    if (!preg_match('/^[a-z0-9_]{0,20}$/', $prefix)) {
-        throw new RuntimeException('config: db.prefix само a-z0-9_');
     }
     return $cfg;
 }
@@ -59,26 +59,47 @@ function organizer_pdo(array $cfg): PDO
     ]);
 }
 
-function organizer_table(array $cfg): string
+function organizer_safe_table(string $t): string
 {
-    return ($cfg['db']['prefix'] ?? '') . 'responses';
+    if (!preg_match('/^[a-z][a-z0-9_]{0,50}$/', $t)) {
+        throw new RuntimeException('невалидно име на таблица');
+    }
+    return $t;
 }
 
-function organizer_ensure_table(PDO $pdo, string $table): void
+// На живо таблиците се създават от sql/schema.sql (пуска ги човек). auto_create е само за изпитване.
+function organizer_auto_create(PDO $pdo, array $cfg, array $spec): void
 {
-    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS `$table` (id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL,
-            form TEXT NOT NULL, created_at TEXT NOT NULL, answers TEXT NOT NULL)");
+    if (empty($cfg['auto_create'])) {
         return;
     }
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `$table` (
-        id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        event VARCHAR(64) NOT NULL,
-        form VARCHAR(40) NOT NULL,
-        created_at DATETIME NOT NULL,
-        answers MEDIUMTEXT NOT NULL,
-        KEY event_form (event, form)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    foreach ($spec['forms'] as $f) {
+        $t = organizer_safe_table($f['table']);
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `$t` (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, answers TEXT NOT NULL)");
+    }
+    $r = organizer_safe_table($spec['rate_table']);
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `$r` (ip_hash TEXT NOT NULL, created_at TEXT NOT NULL)");
+}
+
+// Ограничение по брой изпращания за час. Пазим HMAC на IP (не самия адрес) и само за последния час.
+function organizer_rate_ok(PDO $pdo, array $cfg, array $spec, string $ip): bool
+{
+    $limit = (int)($spec['rate_limit_per_hour'] ?? 10);
+    if ($limit <= 0) {
+        return true;
+    }
+    $key = (string)($cfg['salt'] ?? ($cfg['db']['pass'] ?? $spec['event']));
+    $hash = hash_hmac('sha256', $ip, $key);
+    $t = organizer_safe_table($spec['rate_table']);
+    $cut = gmdate('Y-m-d H:i:s', time() - 3600);
+    $pdo->prepare("DELETE FROM `$t` WHERE created_at < ?")->execute([$cut]);
+    $st = $pdo->prepare("SELECT COUNT(*) FROM `$t` WHERE ip_hash = ? AND created_at >= ?");
+    $st->execute([$hash, $cut]);
+    if ((int)$st->fetchColumn() >= $limit) {
+        return false;
+    }
+    $pdo->prepare("INSERT INTO `$t` (ip_hash, created_at) VALUES (?, ?)")->execute([$hash, gmdate('Y-m-d H:i:s')]);
+    return true;
 }
 
 function organizer_str($v): string
@@ -113,7 +134,7 @@ function organizer_validate(array $form, array $in): array
                     $err[$id] = $label . ': напиши кое е „Друго“ (до 200 знака)';
                     continue;
                 }
-                $v = 'Друго: ' . $o;
+                $v = ($f['other_label'] ?? 'Друго') . ': ' . $o;
             } elseif ($v !== '' && !in_array($v, $f['options'], true)) {
                 $err[$id] = $label . ': непознат отговор';
                 continue;
@@ -138,7 +159,7 @@ function organizer_validate(array $form, array $in): array
                         $err[$id] = $label . ': напиши кое е „Друго“ (до 200 знака)';
                         continue 2;
                     }
-                    $vals[] = 'Друго: ' . $o;
+                    $vals[] = ($f['other_label'] ?? 'Друго') . ': ' . $o;
                 } elseif (in_array($v, $f['options'], true)) {
                     $vals[] = $v;
                 } else {
