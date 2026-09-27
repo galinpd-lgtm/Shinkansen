@@ -1,4 +1,4 @@
-# Живо небе (/), Сграда в 3D (/3d/) и витрината (/showcase/) — публикуване в GitHub Pages.
+# Живо небе (/), Сграда в 3D (/3d/), организаторът (/organizer/) и витрината (/showcase/) — публикуване в GitHub Pages.
 # Всеки час и при push в main: тества, пуска агента, сглобява сайта и го публикува.
 # 3D демото и витрината са отделни: ако техните тестове паднат, Живо небе пак се публикува,
 # а съответната част се пропуска.
@@ -101,6 +101,14 @@ jobs:
           cp blender/skeleton.example.json "$DEST/skeleton.json"
           du -sh "$DEST"
 
+      - id: organizer
+        name: Организатор — тестове и демо под /organizer/ (примерът, без PHP)
+        continue-on-error: true
+        working-directory: apps/organizer
+        run: |
+          python3 -m unittest discover -s tests
+          python3 organizer.py build examples/intensive ../zhivo-nebe/_site/organizer --demo
+
       - id: showcase
         name: Витрина — тестове и сглобяване под /showcase/ (каталогът от skills/*/SKILL.md)
         continue-on-error: true
@@ -122,6 +130,12 @@ jobs:
         if: steps.v3d_tests.outcome != 'success'
         run: |
           echo "::error::Тестовете на apps/venue-3d паднаха — /3d/ не е публикувано в този ход."
+          exit 1
+
+      - name: Отчет за организатора
+        if: always() && steps.organizer.outcome == 'failure'
+        run: |
+          echo "::error::Организаторът не е сглобен — /organizer/ не е публикувано в този ход."
           exit 1
 
       - name: Отчет за витрината
