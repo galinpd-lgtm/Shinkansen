@@ -207,6 +207,12 @@ class Build(unittest.TestCase):
         errors, _ = organizer.check(dict(self.event, theme={"accent_text": "orange"}), {"speakers": [], "partners": []})
         self.assertTrue(any("accent_text" in e for e in errors))
 
+    def test_headings_fit_narrow_screens(self):
+        # широк шрифт + дълга дума на 360 px не бива да излиза вдясно (урок от AI старт: „Поверителност“ +44 px)
+        css = self.read("assets/style.css")
+        self.assertRegex(css, r"h1,h2,h3\{[^}]*overflow-wrap:break-word")
+        self.assertIn("h1{font-size:clamp(1.55rem,7.2vw,", css)
+
     def test_no_uppercase_tracking(self):
         css = self.read("assets/style.css")
         self.assertNotIn("uppercase", css)
