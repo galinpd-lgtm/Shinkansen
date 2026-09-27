@@ -63,6 +63,12 @@ class Check(unittest.TestCase):
         self.bad(lambda e, p: e["gallery"]["groups"][0]["media"][0].pop("alt"), "галерия/Кадри")
         self.bad(lambda e, p: e["forms"][0].update(slug="galeria"), "slug е зает")
 
+    def test_theme_scripts_rules(self):
+        self.bad(lambda e, p: e["theme"].update(scripts=["https://evil.example/x.js"]), "theme.scripts")
+        self.bad(lambda e, p: e["theme"].update(scripts=["../x.js"]), "theme.scripts")
+        self.bad(lambda e, p: e["theme"].update(script_attrs={"onload": "x"}), "script_attrs")
+        self.bad(lambda e, p: e["theme"].update(page_audio="assets/eva/audio.mp3"), "page_audio")
+
     def test_image_needs_alt_and_file(self):
         self.bad(lambda e, p: e["topics"][1]["demo"]["images"][0].pop("alt"), "липсва alt")
         self.bad(lambda e, p: e["topics"][1]["demo"]["images"][0].update(src="../x.png"), "images[0].src")
@@ -258,6 +264,37 @@ class Build(unittest.TestCase):
             self.assertTrue(any("няма файл assets/media/primer_video.webm" in e for e in err), err)
             self.assertTrue(any("primer_1.png е 0.9 MB" in t and "800 KB" in t for t in todo), todo)
             self.assertEqual(organizer.main(["check", d]), 1)
+
+    def test_theme_scripts_on_every_page_and_audio_warning(self):
+        event = copy.deepcopy(self.event)
+        event["theme"]["scripts"] = ["assets/eva/eva.js"]
+        event["theme"]["script_attrs"] = {"data-base": "assets/eva/", "data-voice": "Калина \"К\""}
+        event["theme"]["page_audio"] = "assets/eva/audio/{page}.mp3"
+        with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as out:
+            write_event(src, event)
+            _, todo = organizer.media_files(src, event)
+            err, _ = organizer.media_files(src, event)
+            self.assertIn("theme.scripts: няма файл assets/eva/eva.js", err)
+            os.makedirs(os.path.join(src, "assets", "eva", "audio"))
+            with open(os.path.join(src, "assets", "eva", "eva.js"), "w") as f:
+                f.write("/* Ева */")
+            for name in ("index", "programa"):
+                open(os.path.join(src, "assets", "eva", "audio", name + ".mp3"), "wb").close()
+            err, todo = organizer.media_files(src, event)
+            self.assertEqual(err, [])
+            audio = [t for t in todo if t.startswith("звук:")]
+            self.assertEqual(len(audio), 1)
+            self.assertIn("tema-02-pamet", audio[0])
+            self.assertNotIn(" index,", audio[0])
+            written, _ = organizer.build(src, out)
+            self.assertIn("assets/eva/eva.js", written)
+            tag = '<script src="assets/eva/eva.js" defer data-base="assets/eva/" data-voice="Калина &quot;К&quot;"></script>'
+            for rel in written:
+                if rel.endswith(".html"):
+                    with open(os.path.join(out, rel), encoding="utf-8") as f:
+                        page = f.read()
+                    self.assertIn(tag, page, rel)
+                    self.assertLess(page.index(tag), page.index("</body>"))
 
     def test_topic_without_lab(self):
         # тема 3 в примера е защитата: "lab": false — няма блок и не е липса
