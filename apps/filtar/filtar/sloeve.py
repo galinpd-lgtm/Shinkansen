@@ -233,7 +233,10 @@ def obraboti(b, z, cfg, dcfg, sega, model=None, klasifikator=None, organizacii=N
         pol["doverie"] = {"rezhim": rez["rezhim"], "reshenie": rez["reshenie"],
                           "osi": [{"kluch": o["kluch"], "ocenka": o["ocenka"]} for o in rez["osi"]],
                           "pohvati": [{"ime": p["ime"], "otkas": p["otkas"]} for p in rez["pohvati"]],
-                          "za_chitatelya": rez["sintez"]["za_chitatelya"]}
+                          "za_chitatelya": rez["sintez"]["za_chitatelya"],
+                          "profil": {"uverenost": rez["profil"]["uverenost"],
+                                     "pokritie_s_dokazatelstva": rez["profil"]["pokritie_s_dokazatelstva"],
+                                     "chovek": rez["profil"]["chovek"]}}
         reshenie = OT_DOVERIE[rez["reshenie"]["kod"]]
         prichina = "Z7: %s" % "; ".join(rez["reshenie"]["prichini"])
         if reshenie == KARANTINA:

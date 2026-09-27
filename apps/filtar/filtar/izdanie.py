@@ -102,8 +102,18 @@ def citat(tekst):
         c = c[:MAKS_CITAT_ZNACI].rsplit(" ", 1)[0] + "…"
     return c
 
+CHOVEK_ODOBRENO = "одобрено в сводка"  # Галин е видял записа в черновата, не е проверявал оценката ос по ос
+
+
+def profil_ot(z):
+    """Кратката част от профила на Z7, запазена при филтрирането (или празна за стари записи)."""
+    p = (baza.jl(z["doverie"], {}) or {}).get("profil") or {}
+    return {"uverenost": (p.get("uverenost") or {}).get("nivo"), "chovek": p.get("chovek", "не")}
+
+
 def zapis_za_radara(z, cfg, nomer, kakvo="", znachi=""):
     rep = z["rep_score"] if z["rep_score"] is not None else cfg["sloy5"]["nachalna"]
+    pr = profil_ot(z)
     return {
         "nomer": nomer,
         "id": z["id"],
@@ -119,6 +129,8 @@ def zapis_za_radara(z, cfg, nomer, kakvo="", znachi=""):
         "data": (z["data"] or "")[:10],
         "url": z["url"],
         "reshenie": z["reshenie"],
+        "uverenost": pr["uverenost"],
+        "chovek": pr["chovek"],
         "organizacii": baza.jl(z["organizacii"], []),
         "temi": baza.jl(z["temi"], []),
     }
@@ -159,7 +171,8 @@ def md(d):
               "- Рубрика: %s" % z["rubrika"]["ime"],
               "- Източник: %s (%s) · доверие към източника %.1f" % (z["izvor"]["ime"], z["izvor"]["vid_ime"],
                                                                      z["izvor"]["doverie"]),
-              "- Оценка на текста: %.1f (%s) · решение на филтъра: %s" % (z["ocenka"], z["po_dumi"], z["reshenie"]),
+              "- Оценка на текста: %.1f (%s) · увереност: %s · решение на филтъра: %s" % (
+                  z["ocenka"], z["po_dumi"], z["uverenost"] or "—", z["reshenie"]),
               "- Дата: %s · %s" % (z["data"], z["url"]),
               "",
               "Какво се случи: %s" % (z["kakvo"] or "—"),
@@ -194,7 +207,11 @@ def odobri(b, papka, den, mahni, go, sega):
     for z in mahnati:
         baza.log(b, vreme, 7, "МАХНАТ", "махнат при одобрението (%s)" % den.isoformat(), z["id"])
     for z in ostavat:
-        b.execute("UPDATE zapisi SET odobren=? WHERE id=?", (den.isoformat(), z["id"]))
+        z["chovek"] = CHOVEK_ODOBRENO
+        red = b.execute("SELECT doverie FROM zapisi WHERE id=?", (z["id"],)).fetchone()
+        dov = baza.jl(red["doverie"] if red else None, {}) or {}
+        dov.setdefault("profil", {})["chovek"] = CHOVEK_ODOBRENO
+        b.execute("UPDATE zapisi SET odobren=?, doverie=? WHERE id=?", (den.isoformat(), baza.jd(dov), z["id"]))
     b.commit()
     izh = os.path.join(papka, "odobreno_%s.json" % den.isoformat())
     with open(izh, "w", encoding="utf-8") as f:
@@ -243,7 +260,8 @@ def _publichen(z, den):
     Без пълния текст, без снимки и без вътрешни номера от базата."""
     return {"data": z.get("data") or den, "odobren": den, "zaglavie": z["zaglavie"], "kakvo": z["kakvo"],
             "znachi": z["znachi"], "citat": citat(z.get("citat")), "rubrika": z["rubrika"], "izvor": z["izvor"],
-            "ocenka": z["ocenka"], "po_dumi": z["po_dumi"], "url": z["url"], "reshenie": z["reshenie"]}
+            "ocenka": z["ocenka"], "po_dumi": z["po_dumi"], "uverenost": z.get("uverenost"),
+            "chovek": z.get("chovek", "не"), "url": z["url"], "reshenie": z["reshenie"]}
 
 
 def rss(ic, zapisi, dnes):

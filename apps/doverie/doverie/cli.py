@@ -1,4 +1,5 @@
-"""python -m doverie ocenka --tekst file.txt | --url … [--bez-model] [--format json|tekst]
+"""python -m doverie ocenka --tekst file.txt | --url … [--bez-model] [--format json|tekst] [--zapazi]
+python -m doverie proveri --id <id> --ot <роля>
 python -m doverie serve [--port 8765]
 
 Кодове на изход: 0 готово · 4 не е безопасно сега — машината е заета/гореща, вратата не отговаря или няма
@@ -7,6 +8,7 @@ gate_url (моделът не е викан; опитай по-късно) · 1 
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -15,7 +17,7 @@ from datetime import datetime, timezone
 from . import VERSIYA
 from .config import GreshkaConfig, zaredi
 from .model import GreshkaModel, Model
-from .ocenka import ocenka, otchet
+from .ocenka import CHOVEK, ocenka, otchet
 from .tekst import ot_html
 from .vrata import VrataGreshka, VrataLipsva, VrataNeBezopasno, VrataZaeta
 
@@ -63,6 +65,13 @@ def parser():
     o.add_argument("--pamet", help="файл с видени текстове за оста „оригиналност“ (замества config)")
     o.add_argument("--zapomni", action="store_true", help="добави текста в паметта след оценката")
     o.add_argument("--format", choices=("json", "tekst"), default="json")
+    o.add_argument("--zapazi", action="store_true", help="запази резултата в архива (config „arhiv“) по неговото id")
+    o.add_argument("--arhiv", help="папката на архива (замества config)")
+    pr = sub.add_parser("proveri", help="отбелязва запазена оценка като „проверено от човек“")
+    pr.add_argument("--id", required=True, help="id на оценката (полето „id“ в изхода)")
+    pr.add_argument("--ot", required=True, help="роля от config „proverka_roli“ — ролята, не името")
+    pr.add_argument("--config", help="път до config.json")
+    pr.add_argument("--arhiv", help="папката на архива (замества config)")
     s = sub.add_parser("serve", help="HTTP на 127.0.0.1: POST /ocenka")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--config", help="път до config.json")
@@ -86,11 +95,54 @@ def _ocenka(a):
     if not tekst.strip():
         raise ValueError("празен текст")
     model = None if a.bez_model else Model(cfg)
-    return ocenka(tekst, cfg, model=model, iztochnik=iztochnik, avtor=a.avtor, zapomni=a.zapomni)
+    rez = ocenka(tekst, cfg, model=model, iztochnik=iztochnik, avtor=a.avtor, zapomni=a.zapomni)
+    if a.zapazi:
+        path = os.path.join(_arhiv(a, cfg), "%s.json" % rez["id"])
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(rez, f, ensure_ascii=False, indent=2)
+        print("запазено: %s" % path, file=sys.stderr)
+    return rez
+
+
+def _arhiv(a, cfg):
+    papka = a.arhiv or cfg.get("arhiv")
+    if not papka:
+        raise ValueError("няма архив — задай „arhiv“ в конфигурацията или --arhiv")
+    os.makedirs(papka, exist_ok=True)
+    return papka
+
+
+def proveri(a):
+    """→ код. Само роля от config („методист“, „редактор“…), никога име на човек."""
+    cfg = zaredi(a.config)
+    roli = cfg.get("proverka_roli") or []
+    if a.ot not in roli:
+        print("грешка: ролята трябва да е една от: %s (ролята, не името)" % ", ".join(roli), file=sys.stderr)
+        return 2
+    if not re.fullmatch(r"[0-9a-f]{16}", a.id):
+        print("грешка: id е 16 знака от 0-9 и a-f", file=sys.stderr)
+        return 2
+    path = os.path.join(_arhiv(a, cfg), "%s.json" % a.id)
+    with open(path, encoding="utf-8") as f:
+        rez = json.load(f)
+    rez["profil"]["chovek"] = CHOVEK[2]
+    rez["profil"]["pregled"] = {"rolya": a.ot, "data": datetime.now(timezone.utc).date().isoformat()}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(rez, f, ensure_ascii=False, indent=2)
+    print("%s: %s (%s)" % (a.id, CHOVEK[2], a.ot))
+    return 0
 
 
 def main(argv=None):
     a = parser().parse_args(argv)
+    if a.komanda == "proveri":
+        try:
+            kod = proveri(a)
+        except (GreshkaConfig, OSError, ValueError, KeyError) as e:
+            print("грешка: %s" % e, file=sys.stderr)
+            kod = 1
+        dnevnik(kod == 0, "проверка · exit %d" % kod)
+        return kod
     if a.komanda == "serve":
         from .serve import pusni
         try:

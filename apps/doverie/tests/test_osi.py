@@ -86,8 +86,10 @@ class TestOsi(unittest.TestCase):
             self.assertEqual(ocenka(primer(2), c)["osi"][3]["ocenka"], 1.0)
 
     def test_palnota(self):
-        self.assertEqual(osi.palnota(primer(2))[0], 10.0)
-        oc, za = osi.palnota("Нещо стана.")
+        oc, za, otg = osi.palnota(primer(2), cfg())
+        self.assertEqual(len(otg), 10)
+        self.assertGreaterEqual(oc, 8.0)
+        oc, za, _ = osi.palnota("Нещо стана.", cfg())
         self.assertLess(oc, 5.0)
         self.assertIn("Липсва", za)
 
@@ -101,8 +103,11 @@ class TestOsi(unittest.TestCase):
 
     def test_otchet(self):
         t = otchet(ocenka(primer(1), cfg()))
-        self.assertIn("Достоверност:", t)
+        self.assertTrue(t.startswith("Профил на доверие"))
         self.assertIn("Анонимен авторитет", t)
+        # общата оценка е най-долу, след профила и похватите
+        self.assertLess(t.index("Увереност:"), t.index("Обща оценка:"))
+        self.assertLess(t.index("Открити похвати"), t.index("Обща оценка:"))
 
 
 class TestConfig(unittest.TestCase):

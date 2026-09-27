@@ -30,23 +30,34 @@ class FalshivModel:
     sintez — dict за синтеза. Всяко викане се записва в self.vikaniya.
     """
 
-    def __init__(self, pohvati=None, osi=None, sintez=None, surovo=None):
+    def __init__(self, pohvati=None, osi=None, sintez=None, surovo=None, vaprosi=None, tvardenia=None):
         self.pohvati = pohvati or []
         self.osi = osi or {}
         self.sintez = sintez
         self.surovo = surovo or {}
+        self.vaprosi = vaprosi or {}        # {ключ: "да"|"частично"|"не"}; липсващите са „да“
+        self.tvardenia = tvardenia          # (всички, с източник) за проверимостта или None
         self.vikaniya = []
 
     def chat(self, rolya, sistema, potrebitel):
         self.vikaniya.append((rolya, sistema, potrebitel))
         from doverie.model import izvadi_json
         from doverie.ocenka import PROMPT_OS
+        if potrebitel.startswith("Отговори за всеки от тези въпроси"):
+            if "palnota" in self.surovo:
+                return izvadi_json(self.surovo["palnota"])
+            from obshto import CFG as _c
+            return {"otgovori": {v["kluch"]: self.vaprosi.get(v["kluch"], "да") for v in _c["palnota_vaprosi"]},
+                    "zashto": "Фалшивият модел: отговорите на въпросите."}
         for k, p in PROMPT_OS.items():
             if potrebitel.startswith(p):
                 if k in self.surovo:
                     return izvadi_json(self.surovo[k])
                 oc, za = self.osi.get(k, (6.0, "Фалшивият модел дава средна оценка."))
-                return {"ocenka": oc, "zashto": za}
+                d = {"ocenka": oc, "zashto": za}
+                if k == "proverimost" and self.tvardenia:
+                    d["tvardenia"], d["s_iztochnik"] = self.tvardenia
+                return d
         if potrebitel.startswith("Кои от тези манипулативни похвати"):
             return {"pohvati": self.pohvati}
         if rolya == "pisach":

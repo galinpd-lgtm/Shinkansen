@@ -129,6 +129,29 @@ class TestOdobri(unittest.TestCase):
             d2, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
             self.assertFalse({z["id"] for z in o["zapisi"]} & {z["id"] for z in d2["zapisi"]})
 
+    def test_odobreno_v_svodka(self):
+        """Z7b, готово е, когато: 3. Z8 записва „одобрено в сводка“ след odobri --go."""
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            self.assertTrue(all(z["chovek"] == "не" for z in d["zapisi"]))  # преди одобрението
+            self.assertTrue(all(z["uverenost"] in ("ниска", "средна", "висока") for z in d["zapisi"]))
+            izd.odobri(p.b, p.danni, DEN, [1], False, SEGA)  # без --go — нищо
+            for z in p.b.execute("SELECT doverie FROM zapisi WHERE doverie IS NOT NULL"):
+                self.assertEqual(json.loads(z["doverie"])["profil"]["chovek"], "не")
+            ostavat, mahnati, izh = izd.odobri(p.b, p.danni, DEN, [1], True, SEGA)
+            with open(izh, encoding="utf-8") as f:
+                self.assertTrue(all(z["chovek"] == "одобрено в сводка" for z in json.load(f)["zapisi"]))
+            for z in ostavat:
+                dov = json.loads(p.b.execute("SELECT doverie FROM zapisi WHERE id=?", (z["id"],)).fetchone()[0])
+                self.assertEqual(dov["profil"]["chovek"], "одобрено в сводка")
+            mahnat = json.loads(p.b.execute("SELECT doverie FROM zapisi WHERE id=?", (mahnati[0]["id"],)).fetchone()[0])
+            self.assertEqual(mahnat["profil"]["chovek"], "не")  # махнатият не е одобрен
+            izhod = os.path.join(p.d, "izhod")
+            izd.izdanie(cfg(), p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertTrue(all(z["chovek"] == "одобрено в сводка" for z in json.load(f)["zapisi"]))
+
     def test_nepoznat_nomer(self):
         with Papka() as p:
             podgotvi(p)
@@ -189,7 +212,7 @@ class TestIzdanie(unittest.TestCase):
             with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
                 for z in json.load(f)["zapisi"]:
                     self.assertEqual(set(z), {"data", "odobren", "zaglavie", "kakvo", "znachi", "citat", "rubrika",
-                                              "izvor", "ocenka", "po_dumi", "url", "reshenie"})
+                                              "izvor", "ocenka", "po_dumi", "uverenost", "chovek", "url", "reshenie"})
 
     def test_30_dni(self):
         with Papka() as p:

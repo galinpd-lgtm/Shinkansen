@@ -59,7 +59,8 @@ class TestCli(unittest.TestCase):
     def test_format_tekst(self):
         kod, out, _ = pusni("ocenka", "--tekst", PRIMER_1, "--bez-model", "--format", "tekst")
         self.assertEqual(kod, 0)
-        self.assertTrue(out.startswith("Достоверност:"))
+        self.assertTrue(out.startswith("Профил на доверие"))
+        self.assertIn("Обща оценка:", out.strip().splitlines()[-2])
 
     def test_busy_izhod_4_bez_vikane(self):
         with mock.patch.object(vrata_mod, "http_get", lambda *a: (200, "busy")):
