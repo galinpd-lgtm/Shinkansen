@@ -122,10 +122,10 @@ def check(event, people):
         err.append("brand.logo: относителен път в папката на събитието (напр. assets/logo.svg)")
 
     theme = event.get("theme", {})
-    for key in ("accent", "ink", "paper", "hero_bg", "hero_ink"):
+    for key in ("accent", "accent_text", "on_accent", "ink", "paper", "hero_bg", "hero_ink"):
         if key in theme and not COLOR_RE.match(str(theme[key])):
             err.append("theme.%s: цвят във вида #rrggbb" % key)
-    for key in ("font_display", "font_body", "font_mono"):
+    for key in ("font_display", "font_body", "font_mono", "font_brand"):
         if key in theme and not FONT_RE.match(str(theme[key])):
             err.append("theme.%s: само имена на шрифтове" % key)
     fonts_css = theme.get("fonts_css")
@@ -338,8 +338,12 @@ def theme_css(theme):
     t.setdefault("hero_bg", t["ink"])
     t.setdefault("hero_ink", t["paper"])
     t.setdefault("font_mono", "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace")
-    return (":root{--accent:%(accent)s;--ink:%(ink)s;--paper:%(paper)s;--hero-bg:%(hero_bg)s;--hero-ink:%(hero_ink)s;"
-            "--font-display:%(font_display)s;--font-body:%(font_body)s;--font-mono:%(font_mono)s}" % t)
+    t.setdefault("font_brand", t["font_display"])
+    t.setdefault("accent_text", t["accent"])   # по-тъмен оттенък за дребен текст, когато акцентът е светъл
+    t.setdefault("on_accent", "#ffffff")       # текстът върху бутоните
+    return (":root{--accent:%(accent)s;--accent-text:%(accent_text)s;--on-accent:%(on_accent)s;--ink:%(ink)s;--paper:%(paper)s;"
+            "--hero-bg:%(hero_bg)s;--hero-ink:%(hero_ink)s;--font-display:%(font_display)s;--font-body:%(font_body)s;"
+            "--font-mono:%(font_mono)s;--font-brand:%(font_brand)s}" % t)
 
 
 def page_order(event):

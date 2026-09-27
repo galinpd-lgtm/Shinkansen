@@ -196,6 +196,17 @@ class Build(unittest.TestCase):
             self.assertIn("CREATE TABLE IF NOT EXISTS `%s`" % t, sql)
         self.assertIn("Require all denied", self.read("sql/.htaccess"))
 
+    def test_theme_defaults_and_overrides(self):
+        css = organizer.theme_css({"accent": "#fc6a3e"})
+        self.assertIn("--accent-text:#fc6a3e", css)
+        self.assertIn("--on-accent:#ffffff", css)
+        css = organizer.theme_css({"accent": "#fc6a3e", "accent_text": "#b8431f", "on_accent": "#151515",
+                                   "font_brand": "Syne, sans-serif"})
+        self.assertIn("--accent-text:#b8431f", css)
+        self.assertIn("--font-brand:Syne, sans-serif", css)
+        errors, _ = organizer.check(dict(self.event, theme={"accent_text": "orange"}), {"speakers": [], "partners": []})
+        self.assertTrue(any("accent_text" in e for e in errors))
+
     def test_no_uppercase_tracking(self):
         css = self.read("assets/style.css")
         self.assertNotIn("uppercase", css)
