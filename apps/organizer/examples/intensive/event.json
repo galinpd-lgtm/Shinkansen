@@ -201,6 +201,14 @@
             "src": "assets/demo/primer_2.png",
             "alt": "Оранжев квадрат — пример за кадър от демото"
           }
+        ],
+        "media": [
+          {
+            "src": "assets/media/primer_video.webm",
+            "poster": "assets/demo/primer_1.png",
+            "alt": "Оранжев квадрат се движи по син фон — тестово видео",
+            "caption": "Видео в демото: **без звук**, пуска се с бутона."
+          }
         ]
       },
       "slug": "pamet",
@@ -651,5 +659,36 @@
       "mode": "upsert",
       "key": "title"
     }
-  ]
+  ],
+  "gallery": {
+    "title": "Галерия",
+    "intro": "Какво вече направи машината на лабораторията. В примера — тестови кадри.",
+    "groups": [
+      {
+        "title": "Кадри",
+        "media": [
+          {
+            "src": "assets/demo/primer_1.png",
+            "alt": "Син квадрат — тестов кадър"
+          },
+          {
+            "src": "assets/demo/primer_2.png",
+            "alt": "Оранжев квадрат — тестов кадър",
+            "caption": "Втори кадър"
+          }
+        ]
+      },
+      {
+        "title": "Видео",
+        "intro": "Кратка обиколка.",
+        "media": [
+          {
+            "src": "assets/media/primer_video.webm",
+            "poster": "assets/demo/primer_2.png",
+            "alt": "Оранжев квадрат се движи по син фон — тестово видео"
+          }
+        ]
+      }
+    ]
+  }
 }
