@@ -58,7 +58,8 @@ def reputaciya(iztochnik, cfg):
 
 # ─────────── 2. Проверимост ───────────
 
-TVARDENIE = re.compile(r"\d|\b(заяви|съобщи|обяви|твърд\w+|каза|реши|ще\s+бъде|увелич\w+|намал\w+)\b", _F)
+# твърдение (грубо): изречение с число или с цитат в кавички
+TVARDENIE = re.compile(r"\d|„[^“]{3,}“|\"[^\"]{3,}\"", re.UNICODE)
 # думите за документ/данни не зависят от главна буква; името след „според“/„каза“ — трябва да е с главна
 _DANNI = r"(?i:по\s+данни\s+на)\s+(?!(?i:източници|експерти|специалисти)\b)\w+"
 _IME = r"(?i:според)\s+[А-ЯA-Z]|(?i:заяви|каза|съобщи|обяви|посочи|уточни)\w*\s+[А-ЯA-Z]\w+"
@@ -67,15 +68,21 @@ IZTOCHNIK = re.compile(r"https?://|www\.|" + _DANNI + "|" + _IME +
                        r"|\bстатистик\w+|\bдокумент\w*)", re.UNICODE)
 
 
-def proverimost(tekst):
+def tvardeniya(tekst):
+    """Груба мярка без модел: твърдения = изречения с число или цитат; с източник = тези с атрибуция
+    („според…“, „каза…“, „по данни на…“, документ, адрес). → (всички, с източник)."""
     tv = [s for s in izrecheniya(tekst) if TVARDENIE.search(s)]
-    if not tv:
+    return len(tv), sum(1 for s in tv if IZTOCHNIK.search(s))
+
+
+def proverimost(tekst):
+    n, s_izt = tvardeniya(tekst)
+    if not n:
         return 5.0, "Няма ясни фактически твърдения за проверка."
-    s_izt = sum(1 for s in tv if IZTOCHNIK.search(s))
-    oc = 10.0 * s_izt / len(tv)
+    oc = 10.0 * s_izt / n
     if s_izt == 0:
-        return oc, "Липсва посочен източник за нито едно от %d твърдения." % len(tv)
-    return oc, "%d от %d твърдения имат посочен източник или документ." % (s_izt, len(tv))
+        return oc, "Липсва посочен източник за нито едно от %d твърдения." % n
+    return oc, "%d от %d твърдения имат посочен източник или документ." % (s_izt, n)
 
 
 # ─────────── 3. Прозрачност ───────────
@@ -174,37 +181,77 @@ def manipulaciya(pohvati):
     return oc, "Открити похвати: %d (наказание −%.1f)." % (len(pohvati), suma)
 
 
-# ─────────── 7. Контекстна пълнота — кой, какво, кога, къде, защо ───────────
+# ─────────── 7. Контекстна пълнота — 10-те журналистически въпроса ───────────
+
+DA, CHASTICHNO, NE, NEOPREDELIMO = "да", "частично", "не", "не може да се определи без модел"
+TOCHKI = {DA: 1.0, CHASTICHNO: 0.5, NE: 0.0}
 
 KOGA = re.compile(r"\b(\d{1,2}\s+(януари|февруари|март|април|май|юни|юли|август|септември|октомври|ноември|декември)"
                   r"|(19|20)\d{2}|вчера|днес|утре|понеделник|вторник|сряда|четвъртък|петък|събота|неделя"
                   r"|миналата\s+седмица|тази\s+седмица|\d{1,2}[.:]\d{2}\s*ч)", _F)
 KADE = re.compile(r"\b(във?\s+[А-Я][а-я]+|град\w*|село\w*|област\w*|улица|ул\.|квартал\w*|район\w*|общин\w+)", re.UNICODE)
 ZASHTO = re.compile(r"\b(защото|поради|тъй като|причина\w*|заради|с цел|вследствие|понеже)\b", _F)
+KAK = re.compile(r"\b(чрез|посредством|с помощта на|по реда на|процедура\w*|по начин|стъпк\w+|механизъм\w*)\b", _F)
+SPRYAMO = re.compile(r"\b(спрямо|в сравнение|сравнено|от\s+\d[\d\s,.]*\s+(на|до)\s+\d|ръст|спад|увелич\w+|намал\w+)\b|%", _F)
 KOY = re.compile(r"(?<=[\w,;:–-] )[А-Я][а-я]+(?:\s+[А-Я][а-я]+)?", re.UNICODE)
 
 
-def palnota(tekst):
-    t = normalizirai(tekst)
-    ima = {
-        "кой": bool(KOY.search(t)),
-        "какво": len(dumi(t)) >= 25,
-        "кога": bool(KOGA.search(t)),
-        "къде": bool(KADE.search(t)),
-        "защо": bool(ZASHTO.search(t)),
+def _vaprosi_evristika(t):
+    """Отговор на всеки въпрос, който правилата могат да преценят. Липсващ ключ → не може без модел."""
+    im, an = len(IMENUVAN.findall(t)), len(ANONIMEN.findall(t))
+    n_dumi = len(dumi(t))
+    return {
+        "koy": DA if KOY.search(t) else NE,
+        "kakvo": DA if n_dumi >= 25 else (CHASTICHNO if n_dumi >= 10 else NE),
+        "koga": DA if KOGA.search(t) else NE,
+        "kade": DA if KADE.search(t) else NE,
+        "zashto": DA if ZASHTO.search(t) else NE,
+        "kak": DA if KAK.search(t) else NE,
+        "kolko": (DA if SPRYAMO.search(t) else CHASTICHNO) if re.search(r"\d", t) else NE,
+        "koy_kazva": DA if im else (CHASTICHNO if an else NE),
+        # „чута ли е другата страна“ и „какво значи за читателя“ не се гадаят по думи
     }
-    lipsva = [k for k, v in ima.items() if not v]
-    oc = 2.0 * sum(ima.values())
-    if not lipsva:
-        return oc, "Има кой, какво, кога, къде и защо."
-    return oc, "Липсва: %s." % ", ".join(lipsva)
+
+
+def ocenka_vaprosi(otgovori):
+    """[{kluch, vapros, otgovor}] → оценка 0–10: сборът от определимите, мащабиран до 10 (×10/определими)."""
+    opr = [o for o in otgovori if o["otgovor"] in TOCHKI]
+    if not opr:
+        return 0.0
+    return 10.0 * sum(TOCHKI[o["otgovor"]] for o in opr) / len(opr)
+
+
+def zashto_vaprosi(otgovori):
+    ne = [o["vapros"] for o in otgovori if o["otgovor"] == NE]
+    ch = [o["vapros"] for o in otgovori if o["otgovor"] == CHASTICHNO]
+    neopr = [o["vapros"] for o in otgovori if o["otgovor"] == NEOPREDELIMO]
+    r = []
+    if ne:
+        r.append("липсва: " + ", ".join(ne))
+    if ch:
+        r.append("частично: " + ", ".join(ch))
+    if neopr:
+        r.append("не може да се определи без модел: " + ", ".join(neopr))
+    return ("Отговорени са всички въпроси." if not r else "; ".join(r).capitalize() + ".")
+
+
+def palnota_vaprosi(tekst, cfg):
+    ev = _vaprosi_evristika(normalizirai(tekst))
+    return [{"kluch": v["kluch"], "vapros": v["vapros"], "otgovor": ev.get(v["kluch"], NEOPREDELIMO)}
+            for v in cfg["palnota_vaprosi"]]
+
+
+def palnota(tekst, cfg):
+    """Без модел: → (оценка, защо, въпросите с отговорите)."""
+    otg = palnota_vaprosi(tekst, cfg)
+    return ocenka_vaprosi(otg), zashto_vaprosi(otg), otg
 
 
 EVRISTIKI = {
-    "proverimost": proverimost,
-    "prozrachnost": prozrachnost,
-    "obshtestven_interes": obshtestven_interes,
-    "palnota": palnota,
+    "proverimost": lambda t, cfg: proverimost(t),
+    "prozrachnost": lambda t, cfg: prozrachnost(t),
+    "obshtestven_interes": lambda t, cfg: obshtestven_interes(t),
+    "palnota": lambda t, cfg: palnota(t, cfg)[:2],
 }
 
 

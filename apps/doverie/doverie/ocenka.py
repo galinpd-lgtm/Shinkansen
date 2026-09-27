@@ -5,6 +5,7 @@
 после синтезиращ промпт. Крайната оценка, оценката по думи и решението се смятат в кода, за да са
 повторими; моделът пише само текста за читателя.
 """
+import hashlib
 import json
 import re
 
@@ -12,7 +13,7 @@ from . import VERSIYA, osi, pohvati
 from .config import OSI_KLUCHOVE
 from .model import GreshkaSadarzhanie
 from .reshenie import reshi
-from .tekst import ima_otkas, normalizirai
+from .tekst import dumi, ima_otkas, normalizirai
 
 SISTEMA = ("Ти си внимателен редактор. Оценяваш текст на български. Описваш какво има и какво липсва "
            "в текста; не присъждаш дали е верен. Отговаряш само с JSON, на прост български, "
@@ -28,6 +29,13 @@ PROMPT_OS = {
     "palnota": "Има ли текстът кой, какво, кога, къде и защо? Оценка 10 = има всичките пет.",
 }
 FORMA_OS = 'Върни само JSON: {"ocenka": число от 0 до 10, "zashto": "едно изречение"}.'
+FORMA_PROVERIMOST = ('Върни само JSON: {"ocenka": число от 0 до 10, "zashto": "едно изречение", '
+                     '"tvardenia": брой извлечени фактически твърдения, "s_iztochnik": колко от тях имат посочен '
+                     'източник или документ}.')
+PROMPT_VAPROSI = ("Отговори за всеки от тези въпроси дали текстът отговаря на него: „да“, „частично“ или „не“.\n%s\n"
+                  'Върни само JSON: {"otgovori": {%s}, "zashto": "едно изречение"}.')
+OTGOVORI = {"да": "да", "частично": "частично", "не": "не", "yes": "да", "partial": "частично", "no": "не",
+            "1": "да", "0.5": "частично", "0": "не"}
 
 ZABRANENI = re.compile(r"лъж\w*|фалшив\w*\s+новин\w*|фейк\w*", re.IGNORECASE | re.UNICODE)
 NEUTRALNO = "Формулировката на модела е пропусната; вижте осите и похватите."
@@ -45,13 +53,41 @@ def _tekst_za_modela(tekst):
 
 # ─────────── оси ───────────
 
-def _os_s_model(model, kluch, tekst):
-    otg = model.chat("struktura", SISTEMA, "%s\n%s\n\n%s" % (PROMPT_OS[kluch], FORMA_OS, _tekst_za_modela(tekst)))
+def _os_s_model(model, kluch, tekst, cfg):
+    """→ (оценка, защо, допълнително). Допълнително: броят твърдения (проверимост) или 10-те отговора (пълнота)."""
+    if kluch == "palnota":
+        return _palnota_s_model(model, tekst, cfg["palnota_vaprosi"])
+    forma = FORMA_PROVERIMOST if kluch == "proverimost" else FORMA_OS
+    otg = model.chat("struktura", SISTEMA, "%s\n%s\n\n%s" % (PROMPT_OS[kluch], forma, _tekst_za_modela(tekst)))
     try:
         oc = osi.ogranichi(float(otg["ocenka"]))
     except (KeyError, TypeError, ValueError):
         raise GreshkaSadarzhanie("няма оценка")
-    return oc, chisto(otg.get("zashto")) or "Моделът не даде обяснение."
+    dop = None
+    if kluch == "proverimost":
+        try:
+            n, m = int(otg["tvardenia"]), int(otg["s_iztochnik"])
+            if 0 <= m <= n:
+                dop = (n, m)
+        except (KeyError, TypeError, ValueError):
+            pass
+    return oc, chisto(otg.get("zashto")) or "Моделът не даде обяснение.", dop
+
+
+def _palnota_s_model(model, tekst, vaprosi):
+    spisak = "\n".join("- %s: %s" % (v["kluch"], v["vapros"]) for v in vaprosi)
+    kluchove = ", ".join('"%s": "да|частично|не"' % v["kluch"] for v in vaprosi)
+    otg = model.chat("struktura", SISTEMA, "%s\n\n%s" % (PROMPT_VAPROSI % (spisak, kluchove), _tekst_za_modela(tekst)))
+    surovi = otg.get("otgovori") if isinstance(otg, dict) else None
+    if not isinstance(surovi, dict):
+        raise GreshkaSadarzhanie("няма отговори на въпросите")
+    otgovori = []
+    for v in vaprosi:
+        o = OTGOVORI.get(str(surovi.get(v["kluch"], "")).strip().lower())
+        if o is None:
+            raise GreshkaSadarzhanie("липсва отговор на „%s“" % v["vapros"])
+        otgovori.append({"kluch": v["kluch"], "vapros": v["vapros"], "otgovor": o})
+    return osi.ocenka_vaprosi(otgovori), chisto(otg.get("zashto")) or osi.zashto_vaprosi(otgovori), otgovori
 
 
 # ─────────── похвати ───────────
@@ -125,6 +161,78 @@ def _sintez_s_model(model, rez):
     }
 
 
+# ─────────── профил на доверие ───────────
+
+CHOVEK = ("не", "одобрено в сводка", "проверено от човек")
+
+
+def _izmereno_s(o, pohvati_s_model):
+    if o["kluch"] == "manipulaciya":
+        return "модел" if pohvati_s_model else "правила"
+    return "модел" if o["izvor"] == "модел" else "правила"
+
+
+def uverenost(s_model, n_dumi, pokritie, razliki, neopredelimi, cfg):
+    """Проста и повторима: ниска / висока по правилата от config, иначе средна. Всяка причина се изписва."""
+    u = cfg["uverenost"]
+    niski = []
+    if not s_model:
+        niski.append("без модел — само правила и евристики")
+    if n_dumi < u["niska_pod_dumi"]:
+        niski.append("текстът е под %d думи (%d)" % (u["niska_pod_dumi"], n_dumi))
+    if pokritie["tvardenia"] < u["niska_pod_tvardeniya"]:
+        niski.append("под %d твърдения (%d)" % (u["niska_pod_tvardeniya"], pokritie["tvardenia"]))
+    for ime, r in razliki:
+        if r > u["niska_razlika_nad"]:
+            niski.append("правилата и моделът се разминават с %.1f по оста „%s“" % (r, ime))
+    if neopredelimi:
+        niski.append("%d от въпросите за пълнота не могат да се определят без модел" % neopredelimi)
+    if niski:
+        return {"nivo": "ниска", "prichini": niski}
+
+    visoki, lipsva = [], []
+    visoki.append("с модел")
+    (visoki if n_dumi >= u["visoka_ot_dumi"] else lipsva).append(
+        "%d думи (%s %d)" % (n_dumi, "≥" if n_dumi >= u["visoka_ot_dumi"] else "под", u["visoka_ot_dumi"]))
+    dyal = pokritie["dyal"] or 0.0
+    (visoki if dyal >= u["visoka_ot_pokritie"] else lipsva).append(
+        "покритие с доказателства %d%% (%s %d%%)" % (round(100 * dyal), "≥" if dyal >= u["visoka_ot_pokritie"] else "под",
+                                                    round(100 * u["visoka_ot_pokritie"])))
+    nay = max((r for _, r in razliki), default=0.0)
+    (visoki if nay <= u["visoka_razlika_do"] else lipsva).append(
+        "най-голямата разлика между правила и модел е %.1f (%s %s)" % (
+            nay, "до" if nay <= u["visoka_razlika_do"] else "над", u["visoka_razlika_do"]))
+    if not lipsva:
+        return {"nivo": "висока", "prichini": visoki}
+    return {"nivo": "средна", "prichini": lipsva}
+
+
+def profil(spisak_osi, pravila, s_model, pohvati_s_model, tekst, pokritie, neopredelimi, krayna, po_dumi, cfg):
+    osi_p, razliki = {}, []
+    for i, o in enumerate(spisak_osi, 1):
+        z = {"kluch": o["kluch"], "ime": o["ime"], "ocenka": o["ocenka"], "zashto": o["zashto"],
+             "izmereno_s": _izmereno_s(o, pohvati_s_model)}
+        if "vaprosi" in o:
+            z["vaprosi"] = o["vaprosi"]
+        if o["kluch"] in pravila and z["izmereno_s"] == "модел":
+            z["pravila"] = osi.okragli(pravila[o["kluch"]])
+            z["razlika"] = osi.okragli(abs(o["ocenka"] - z["pravila"]))
+            razliki.append((o["ime"], z["razlika"]))
+        osi_p[str(i)] = z
+    return {
+        "osi": osi_p,
+        "uverenost": uverenost(s_model, len(dumi(tekst)), pokritie, razliki, neopredelimi, cfg),
+        "pokritie_s_dokazatelstva": pokritie,
+        "chovek": CHOVEK[0],  # ядрото само винаги пише „не“
+        "obshta_ocenka": krayna,
+        "po_dumi": po_dumi,
+    }
+
+
+def id_na_tekst(tekst):
+    return hashlib.sha256(normalizirai(tekst).encode("utf-8")).hexdigest()[:16]
+
+
 # ─────────── главният вход ───────────
 
 def ocenka(tekst, cfg, model=None, iztochnik=None, avtor=None, vidyani=None, zapomni=False):
@@ -159,20 +267,46 @@ def ocenka(tekst, cfg, model=None, iztochnik=None, avtor=None, vidyani=None, zap
     zap["originalnost"] = osi.os_zapis("originalnost", oc, za, cfg, "шингли")
     oc, za = osi.manipulaciya(namereni)
     zap["manipulaciya"] = osi.os_zapis("manipulaciya", oc, za, cfg, "похвати")
+    # правилата се смятат винаги — с модел служат за сравнение (увереност)
+    pravila = {k: osi.EVRISTIKI[k](tekst, cfg)[0] for k in osi.S_MODEL}
+    oc7, za7, vaprosi_pravila = osi.palnota(tekst, cfg)
+    n_tv, m_tv = osi.tvardeniya(tekst)
+    pokritie = {"tvardenia": n_tv, "s_iztochnik": m_tv, "grubo": True,
+                "kak": "груба мярка без модел: изречения с число или цитат; с източник — тези с атрибуция"}
+    vaprosi = vaprosi_pravila
     for k in osi.S_MODEL:
         if s_model:
             try:
-                oc, za = _os_s_model(model, k, tekst)
+                oc, za, dop = _os_s_model(model, k, tekst, cfg)
                 zap[k] = osi.os_zapis(k, oc, za, cfg, "модел")
+                if k == "palnota":
+                    vaprosi = dop
+                elif k == "proverimost" and dop:
+                    pokritie = {"tvardenia": dop[0], "s_iztochnik": dop[1], "grubo": False,
+                                "kak": "твърденията са извлечени от модела"}
                 continue
             except GreshkaSadarzhanie:
                 belezhki.append("%s: моделът не върна оценка — ползвана е евристиката." % osi.IMENA[k])
-        oc, za = osi.EVRISTIKI[k](tekst)
-        zap[k] = osi.os_zapis(k, oc, za, cfg, "евристика")
+        if k == "palnota":
+            zap[k] = osi.os_zapis(k, oc7, za7, cfg, "евристика")
+        else:
+            oc, za = osi.EVRISTIKI[k](tekst, cfg)
+            zap[k] = osi.os_zapis(k, oc, za, cfg, "евристика")
+    zap["palnota"]["vaprosi"] = vaprosi
+    neopredelimi = sum(1 for v in vaprosi if v["otgovor"] == osi.NEOPREDELIMO)
+    if neopredelimi:
+        belezhki.append("Контекстна пълнота: %d от %d въпроса не могат да се определят без модел — оста е смятана от "
+                        "останалите %d и мащабирана до 10." % (neopredelimi, len(vaprosi), len(vaprosi) - neopredelimi))
+    pokritie["dyal"] = round(pokritie["s_iztochnik"] / pokritie["tvardenia"], 2) if pokritie["tvardenia"] else None
     spisak_osi = [zap[k] for k in OSI_KLUCHOVE]
 
     krayna = osi.krayna(spisak_osi, cfg)
+    po_dumi = osi.po_dumi(krayna, cfg)
+    pohvati_s_model = s_model and not any(b.startswith("Моделът не върна похватите") for b in belezhki)
     rez = {
+        "profil": profil(spisak_osi, pravila, s_model, pohvati_s_model, tekst, pokritie, neopredelimi,
+                         krayna, po_dumi, cfg),
+        "id": id_na_tekst(tekst),
         "versiya": VERSIYA,
         "rezhim": "model" if s_model else "bez-model",
         "iztochnik": {"domain": osi.domain(iztochnik), "avtor": avtor or None, "avtor_se_ocenyava": False},
@@ -180,7 +314,7 @@ def ocenka(tekst, cfg, model=None, iztochnik=None, avtor=None, vidyani=None, zap
         "pohvati": namereni,
         "neprovereni_pohvati": neprovereni,
         "krayna_ocenka": krayna,
-        "po_dumi": osi.po_dumi(krayna, cfg),
+        "po_dumi": po_dumi,
     }
     rez["reshenie"] = reshi(krayna, namereni, spisak_osi, cfg)
     if s_model:
@@ -201,12 +335,21 @@ def ocenka(tekst, cfg, model=None, iztochnik=None, avtor=None, vidyani=None, zap
 # ─────────── текстов отчет ───────────
 
 def otchet(rez):
-    r = ["Достоверност: %.1f / 10 — %s" % (rez["krayna_ocenka"], rez["po_dumi"]),
-         "Решение: %s (%s)" % (rez["reshenie"]["ime"], "; ".join(rez["reshenie"]["prichini"])),
-         "Режим: %s" % ("с модел" if rez["rezhim"] == "model" else "без модел (само правила и евристики)"),
-         "", "Оси:"]
-    for o in rez["osi"]:
-        r.append("  %-28s %4.1f  (%2d%%)  %s" % (o["ime"], o["ocenka"], round(o["teglo"] * 100), o["zashto"]))
+    """Същият ред като JSON: първо профилът, после похватите, общата оценка и решението — най-долу."""
+    pr = rez["profil"]
+    r = ["Профил на доверие (%s)" % ("с модел" if rez["rezhim"] == "model" else "без модел — само правила"), "", "Оси:"]
+    for n, o in pr["osi"].items():
+        dop = ""
+        if "razlika" in o:
+            dop = "  [правила %.1f, разлика %.1f]" % (o["pravila"], o["razlika"])
+        r.append("  %s. %-28s %4.1f  %-7s %s%s" % (n, o["ime"], o["ocenka"], o["izmereno_s"], o["zashto"], dop))
+    u = pr["uverenost"]
+    r += ["", "Увереност: %s" % u["nivo"]] + ["  − %s" % p for p in u["prichini"]]
+    pk = pr["pokritie_s_dokazatelstva"]
+    dyal = "%d%%" % round(100 * pk["dyal"]) if pk["dyal"] is not None else "—"
+    r += ["Покритие с доказателства: %d от %d твърдения имат посочен източник (%s)%s" % (
+        pk["s_iztochnik"], pk["tvardenia"], dyal, " — груба мярка" if pk["grubo"] else "")]
+    r.append("Гледал човек: %s" % pr["chovek"])
     r.append("")
     if rez["pohvati"]:
         r.append("Открити похвати (%d):" % len(rez["pohvati"]))
@@ -222,4 +365,6 @@ def otchet(rez):
     r += ["", "За читателя: %s" % s["za_chitatelya"], "Препоръка: %s" % s["preporaka"]]
     for b in rez.get("belezhki") or []:
         r.append("Бележка: %s" % b)
+    r += ["", "Обща оценка: %.1f / 10 — %s" % (pr["obshta_ocenka"], pr["po_dumi"]),
+          "Решение: %s (%s)" % (rez["reshenie"]["ime"], "; ".join(rez["reshenie"]["prichini"]))]
     return "\n".join(r)
