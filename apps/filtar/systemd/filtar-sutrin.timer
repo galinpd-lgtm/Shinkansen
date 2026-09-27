@@ -1,0 +1,10 @@
+[Unit]
+Description=Филтър: сутрешна чернова (и повторен опит, ако машината е била заета)
+
+[Timer]
+OnCalendar=*-*-* 06:40
+OnCalendar=*-*-* 07:40
+Persistent=true
+
+[Install]
+WantedBy=timers.target

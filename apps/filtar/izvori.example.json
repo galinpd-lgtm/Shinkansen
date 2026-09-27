@@ -1,0 +1,10 @@
+[
+  {"id": "primer-tehno", "ime": "Примерен технологичен портал", "vid": "medija", "tip": "rss",
+   "url": "https://example.org/tehno/rss.xml", "ezik": "bg", "fetch_interval_min": 15},
+  {"id": "primer-obshtina", "ime": "Примерна общинска емисия", "vid": "oficialen", "tip": "atom",
+   "url": "https://example.org/obshtina/atom.xml", "ezik": "bg", "fetch_interval_min": 60},
+  {"id": "primer-obshtnost", "ime": "Примерен общностен блог", "vid": "obshtnost", "tip": "rss",
+   "url": "https://example.net/blog/feed", "ezik": "bg"},
+  {"id": "primer-stranitsa", "ime": "Примерна страница с документация", "vid": "dokumentaciya", "tip": "html",
+   "url": "https://example.org/docs/novo.html", "ezik": "en"}
+]
