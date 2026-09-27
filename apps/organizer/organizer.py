@@ -179,7 +179,7 @@ def check(event, people):
             missing = [r for r in role_ids if not lab.get(r)]
             if missing and role_ids:
                 todo.append("%s: лабораторията е празна за %s" % (where, ", ".join(missing)))
-        if not t.get("demo"):
+        if not t.get("demo") and t.get("demo") is not False:     # false — без демо по замисъл
             todo.append("%s: няма „Демо на живо“" % where)
         for s in t.get("sections", []):
             tbl = s.get("table")
@@ -558,8 +558,8 @@ def topic(event, t, demo):
     if t.get("takeaways"):
         parts.append(block('<h2>Какво отнасяш вкъщи</h2>\n<ul class="ticks">%s</ul>' % "".join(
             "<li>%s</li>" % md(x) for x in t["takeaways"]), "", "Какво отнасяш вкъщи"))
-    if t.get("source"):
-        src = t["source"]
+    src = t.get("source") or {}
+    if str(src.get("text", "")).strip(" -–—"):    # празен текст или само тире — блокът не се показва
         parts.append(block('<h2>%s</h2>\n<p class="lead">%s</p>' % (esc(src.get("title", "Изходник")), md(src.get("text", ""))),
                            "source", "Изходник"))
     nav = []

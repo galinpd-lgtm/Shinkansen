@@ -184,7 +184,11 @@ class Build(unittest.TestCase):
         self.assertIn('class="block source"', one)
         self.assertIn("<dt>Роля</dt>", one)
         self.assertIn("Как да поставя задача", one)
-        self.assertNotIn('class="block demo"', self.read("tema-03-zashtita.html"))
+        three = self.read("tema-03-zashtita.html")
+        self.assertNotIn('class="block demo"', three)                 # "demo": false
+        self.assertNotIn('class="block source"', three)               # изходник само с тире
+        self.assertIn("<h2>Критерии</h2>", three)
+        self.assertFalse(any(t.startswith("тема 3: няма") for t in self.todo), self.todo)
 
     def test_slots_and_placeholders_for_people(self):
         page = self.read("lektori.html")
