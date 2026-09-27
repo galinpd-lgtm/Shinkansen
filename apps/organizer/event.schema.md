@@ -17,7 +17,8 @@
 | `cta` | `label` и `form` — id на въпросника, към който води бутонът |
 | `home.hero_note` | един ред под заглавието, напр. „Подгряващо събитие за [конференция](https://…)“ |
 | `home.stats` | `[{value, label}]` — „три числа“ |
-| `home.sections` | раздели `{title, intro, items[{title,text}], table{head[], rows[[]]}, list[]}` |
+| `home.sections` | раздели `{title, intro, items[{title,text}], table{head[], rows[[]]}, list[], images[]}` |
+| `…images` | в `topics[].demo`, `topics[].sections[]`, `home.sections[]`: `[{src, alt ✱, caption}]` — `src` е файл в `assets/` на събитието; решетка под текста, всеки кадър води към пълния файл |
 | `program_intro` · `schedule_intro` | увод на „Програмата“ и „Разписание“ |
 | `lab_roles` | `{id, label, text}` — колоните на лабораторията и картите „За кого“ |
 | `topics` | `{n ✱, title ✱, slug, question, summary, goals[], concepts[{term,text}], sections[], demo{title,intro,steps[]}, lab{роля:[…]}, takeaways[], source{title,text}}` |
@@ -25,7 +26,7 @@
 | `people` | `speakers_file` (`data/lektori.json`), `partners_file` (`data/partnyori.json`), `placeholders{speakers,partners}`, `speakers_intro`, `organizers_intro` |
 | `organizers` | `[{name, role, text, link, logo}]` на „Организатори“; `role` — „Организатор“, „Съорганизатор“ и т.н., над името |
 | `privacy` | `{title, intro, blocks[]}` → `privacy.html` (блоковете са като `home.sections`) |
-| `forms` | `{id, slug, title, intro, table, fields[]}`; slug не може да е име на страница или `tema-…` |
+| `forms` | `{id, slug, title, intro, table, nav, nav_label, fields[]}`; `nav: true` слага формуляра в менюто до основния (`cta.form`); slug не може да е име на страница или `tema-…` |
 | `forms[].fields` | `{id, type, label, required, personal, help, group, options[] / options_from:"topics", other, other_label, max, max_length, required_if[]}`; `personal: true` (имейлът и съгласието — винаги) пази полето в отделната таблица `_kontakt` |
 
 `"lab": false` и `"demo": false` скриват лабораторията и демото на тема, която няма такава по замисъл (напр. защитата) — без празни блокове и без липса в `check`. Изходник с празен текст (или само тире) не се показва; блок без ключ също не се показва.

@@ -224,6 +224,23 @@ def check(event, people):
         if days and n not in in_schedule:
             todo.append("тема %s: не е в разписанието" % n)
 
+    img_lists = [("home.sections[%d]" % i, x.get("images")) for i, x in enumerate(event.get("home", {}).get("sections", []))]
+    for t in topics:
+        if isinstance(t.get("demo"), dict):
+            img_lists.append(("тема %s/демо" % t.get("n"), t["demo"].get("images")))
+        img_lists += [("тема %s/%s" % (t.get("n"), x.get("title")), x.get("images")) for x in t.get("sections", [])]
+    for where, imgs in img_lists:
+        if imgs is None:
+            continue
+        if not isinstance(imgs, list):
+            err.append("%s: images е списък" % where)
+            continue
+        for k, im in enumerate(imgs):
+            if not isinstance(im, dict) or not im.get("src") or not LOCAL_RE.match(im["src"]) or ".." in im["src"]:
+                err.append("%s: images[%d].src — относителен път в папката на събитието (assets/…)" % (where, k))
+            elif not str(im.get("alt", "")).strip():
+                err.append("%s: images[%d] (%s) — липсва alt: с думи какво има на кадъра" % (where, k, im["src"]))
+
     forms = event.get("forms", [])
     ids, slugs, tables = set(), set(), set()
     for f in forms:
@@ -394,6 +411,9 @@ def page(event, name, title, body, demo, current=None, extra_scripts=(), descrip
     form = main_form(event)
     if form:
         nav.append((form["slug"] + ".html", event.get("cta", {}).get("label") or form["title"]))
+    for f in event.get("forms", []):                 # forms[].nav: true — още формуляри в менюто
+        if f.get("nav") and f is not form:
+            nav.append((f["slug"] + ".html", f.get("nav_label") or f["title"]))
     nav_html = "".join('<a href="%s"%s>%s</a>' % (h, ' aria-current="page"' if h == current else "", esc(l))
                        for h, l in nav)
     brand = event["brand"]
@@ -453,8 +473,18 @@ def table(tbl):
     return '<div class="table-wrap"><table class="grid"><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>' % (head, rows)
 
 
+def images_grid(imgs):
+    """Малка решетка от кадри: всеки води към пълния файл; alt е задължителен (check), lazy зареждане."""
+    if not imgs:
+        return ""
+    return '<div class="shots">%s</div>' % "".join(
+        '<figure><a href="%s"><img src="%s" alt="%s" loading="lazy"></a>%s</figure>' % (
+            esc(i["src"]), esc(i["src"]), esc(i["alt"]),
+            '<figcaption>%s</figcaption>' % md(i["caption"]) if i.get("caption") else "") for i in imgs)
+
+
 def section(s, cls=""):
-    """Раздел: заглавие, увод, карти, таблица, списък — в този ред, каквото има."""
+    """Раздел: заглавие, увод, карти, таблица, списък, кадри — в този ред, каквото има."""
     parts = ['<h2>%s</h2>' % esc(s["title"])]
     if s.get("intro"):
         parts.append('<p class="lead">%s</p>' % md(s["intro"]))
@@ -464,6 +494,8 @@ def section(s, cls=""):
         parts.append(table(s["table"]))
     if s.get("list"):
         parts.append('<ul class="ticks">%s</ul>' % "".join("<li>%s</li>" % md(x) for x in s["list"]))
+    if s.get("images"):
+        parts.append(images_grid(s["images"]))
     return block("\n".join(parts), s.get("cls", cls), s["title"])
 
 
@@ -547,7 +579,8 @@ def topic(event, t, demo):
         dm = t["demo"]
         parts.append(block('<h2>%s</h2>\n%s<ol class="steps">%s</ol>' % (
             esc(dm.get("title", "Демо на живо")), '<p class="lead">%s</p>' % md(dm["intro"]) if dm.get("intro") else "",
-            "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))), "demo", "Демо на живо"))
+            "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))) + images_grid(dm.get("images")),
+            "demo", "Демо на живо"))
     roles = event.get("lab_roles", [])
     if roles and t.get("lab") is not False:
         cols = "".join('<article class="lab-col"><h3>%s</h3><ul>%s</ul></article>' % (

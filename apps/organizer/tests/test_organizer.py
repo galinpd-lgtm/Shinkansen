@@ -35,6 +35,8 @@ def write_event(folder, event, speakers=(), partners=()):
     with open(os.path.join(folder, "event.json"), "w", encoding="utf-8") as f:
         json.dump(event, f, ensure_ascii=False)
     os.makedirs(os.path.join(folder, "data"), exist_ok=True)
+    if not os.path.exists(os.path.join(folder, "assets")):          # кадрите от примера
+        shutil.copytree(os.path.join(EXAMPLE, "assets"), os.path.join(folder, "assets"))
     for name, lst in (("lektori", speakers), ("partnyori", partners)):
         with open(os.path.join(folder, "data", name + ".json"), "w", encoding="utf-8") as f:
             json.dump(list(lst), f, ensure_ascii=False)
@@ -52,6 +54,17 @@ class Check(unittest.TestCase):
         mutate(event, people)
         errors, _ = organizer.check(event, people)
         self.assertTrue(any(needle in e for e in errors), errors)
+
+    def test_image_needs_alt_and_file(self):
+        self.bad(lambda e, p: e["topics"][1]["demo"]["images"][0].pop("alt"), "липсва alt")
+        self.bad(lambda e, p: e["topics"][1]["demo"]["images"][0].update(src="../x.png"), "images[0].src")
+        event = copy.deepcopy(example()[0])
+        event["topics"][1]["demo"]["images"][0]["src"] = "assets/demo/nyama.png"
+        with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as out:
+            write_event(src, event)
+            with self.assertRaises(ValueError) as cm:
+                organizer.build(src, out)
+            self.assertIn("nyama.png", str(cm.exception))
 
     def test_schedule_points_to_missing_topic(self):
         self.bad(lambda e, p: e["schedule"][0]["slots"][1].update(topics=[99]), "несъществуваща тема 99")
@@ -201,6 +214,16 @@ class Build(unittest.TestCase):
         self.assertIn("<h2>Организаторите</h2>", org)
         self.assertLess(org.index('<p class="kicker">Организатор</p>'), org.index('<p class="kicker">Съорганизатор</p>'))
 
+    def test_images_and_form_nav(self):
+        page = self.read("tema-02-pamet.html")
+        self.assertIn('<a href="assets/demo/primer_1.png"><img src="assets/demo/primer_1.png" alt="Син квадрат', page)
+        self.assertIn('loading="lazy"', page)
+        self.assertIn("<figcaption>Кадър 1</figcaption>", page)
+        self.assertIn("assets/demo/primer_2.png", self.written)
+        self.assertIn('<a href="tehnika.html">Техника</a>', self.read("index.html"))   # forms[].nav
+        nav = re.search(r"<nav>(.*?)</nav>", self.read("index.html")).group(1)
+        self.assertEqual(nav.count('href="anketa.html"'), 1)
+
     def test_topic_without_lab(self):
         # тема 3 в примера е защитата: "lab": false — няма блок и не е липса
         self.assertNotIn("<h2>Лаборатория</h2>", self.read("tema-03-zashtita.html"))
@@ -276,6 +299,8 @@ class Build(unittest.TestCase):
 
     def test_no_secrets_in_output(self):
         for rel in self.written:
+            if rel.endswith((".png", ".jpg", ".woff2")):
+                continue
             text = self.read(rel)
             self.assertNotRegex(text, r"(?i)password\s*=|'pass'\s*=>\s*'[^'П]", rel)
 
