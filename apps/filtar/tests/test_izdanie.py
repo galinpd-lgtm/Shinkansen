@@ -213,6 +213,77 @@ class TestIzdanie(unittest.TestCase):
                 for z in json.load(f)["zapisi"]:
                     self.assertEqual(set(z), {"data", "odobren", "zaglavie", "kakvo", "znachi", "citat", "rubrika",
                                               "izvor", "ocenka", "po_dumi", "uverenost", "chovek", "url", "reshenie"})
+                    self.assertEqual(z["reshenie"], "ПРОПУСНИ")
+
+    def odobreni_s_predupredi(self, p, c):
+        podgotvi(p)
+        d, _ = izd.chernova(p.b, c, DEN, p.danni, SEGA)
+        self.assertIn("ПРЕДУПРЕДИ", {z["reshenie"] for z in d["zapisi"]})  # има какво да се отсее
+        izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+        return d
+
+    def test_publichno_samo_propusni(self):
+        c = cfg()
+        c["izdanie"].update(maks_na_den=99, maks_na_rubrika=99, maks_na_izvor=99)
+        with Papka() as p:
+            d = self.odobreni_s_predupredi(p, c)
+            izhod = os.path.join(p.d, "izhod")
+            o = izd.izdanie(c, p.danni, izhod, DEN)
+            propusni = [z for z in d["zapisi"] if z["reshenie"] == "ПРОПУСНИ"]
+            self.assertEqual(o["zapisi"], len(propusni))
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertEqual({z["reshenie"] for z in json.load(f)["zapisi"]}, {"ПРОПУСНИ"})
+            with open(os.path.join(izhod, "po-den", "2026-10-05.json"), encoding="utf-8") as f:
+                self.assertEqual({z["reshenie"] for z in json.load(f)["zapisi"]}, {"ПРОПУСНИ"})
+            with open(os.path.join(izhod, "rss.xml"), encoding="utf-8") as f:
+                rss = f.read()
+            self.assertNotIn("решение: ПРЕДУПРЕДИ", rss)
+            for z in d["zapisi"]:
+                if z["reshenie"] != "ПРОПУСНИ":
+                    self.assertNotIn(z["url"], rss)
+            # одобреното остава вътрешно цяло
+            with open(os.path.join(p.danni, "odobreno_2026-10-05.json"), encoding="utf-8") as f:
+                self.assertIn("ПРЕДУПРЕДИ", {z["reshenie"] for z in json.load(f)["zapisi"]})
+
+    def test_osite_ne_sa_publichni_po_podrazbirane(self):
+        with Papka() as p:
+            podgotvi(p)
+            izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+            with open(os.path.join(p.danni, "odobreno_2026-10-05.json"), encoding="utf-8") as f:
+                vatr = json.load(f)["zapisi"]
+            self.assertTrue(all(len(z["osi"]) == 7 for z in vatr))  # вътрешно ги има
+            self.assertFalse(cfg()["izdanie"]["publichni_osi"])
+            izhod = os.path.join(p.d, "izhod")
+            izd.izdanie(cfg(), p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertTrue(all("osi" not in z for z in json.load(f)["zapisi"]))
+            c = cfg()
+            c["izdanie"]["publichni_osi"] = True
+            izd.izdanie(c, p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertTrue(all(len(z["osi"]) == 7 for z in json.load(f)["zapisi"]))
+
+    def test_proverka_sled_odobrenieto_se_vizhda(self):
+        import contextlib
+        import io
+        from doverie import cli as dcli
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+            zid = next(z["id"] for z in d["zapisi"] if z["reshenie"] == "ПРОПУСНИ")
+            with contextlib.redirect_stdout(io.StringIO()):
+                kod = dcli.main(["proveri", "--zapis", str(zid), "--ot", "методист",
+                                 "--baza", os.path.join(p.danni, "filtar.sqlite")])
+            self.assertEqual(kod, 0)
+            izhod = os.path.join(p.d, "izhod")
+            izd.izdanie(cfg(), p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                po_url = {z["url"]: z["chovek"] for z in json.load(f)["zapisi"]}
+            url = next(z["url"] for z in d["zapisi"] if z["id"] == zid)
+            self.assertEqual(po_url.pop(url), "проверено от човек")
+            self.assertTrue(all(v == "одобрено в сводка" for v in po_url.values()))
 
     def test_30_dni(self):
         with Papka() as p:

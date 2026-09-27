@@ -21,7 +21,8 @@ python3 -m doverie ocenka --tekst tests/primer_1.txt --bez-model --format tekst 
 python3 -m doverie ocenka --tekst statiya.txt --iztochnik example.org              # с модела (Ollama)
 python3 -m doverie ocenka --url https://example.org/statiya/1                      # тегли и оценява
 python3 -m doverie ocenka --tekst statiya.txt --zapazi --arhiv arhiv/              # и я пази по „id“
-python3 -m doverie proveri --id 0123456789abcdef --ot методист                     # „проверено от човек“
+python3 -m doverie proveri --zapis 42 --ot методист --baza danni/filtar.sqlite     # запис от радара
+python3 -m doverie proveri --id 0123456789abcdef --ot методист                     # самостоятелна оценка
 python3 -m doverie serve --port 8765                                               # HTTP само на 127.0.0.1
 ```
 
@@ -35,8 +36,12 @@ python3 -m doverie serve --port 8765                                            
 | `--zapazi` / `--arhiv D` | пази резултата като `<id>.json` в архива (иначе `arhiv` от config) — само резултата, не текста |
 | `--config C` | иначе `$DOVERIE_CONFIG` → `config.json` → `config.example.json` |
 
-`proveri --id <id> --ot <роля>` отбелязва запазена оценка като „проверено от човек“. Това е само за изрична ръчна
-проверка ос по ос (методист). Приема **роля** от `proverka_roli` в config, никога име на човек. Записва ролята и датата.
+`proveri` отбелязва оценка като „проверено от човек“. Това е само за изрична ръчна проверка ос по ос (методист).
+Приема **роля** от `proverka_roli` в config, никога име на човек. Записва ролята и датата.
+
+- `--zapis N` (основният случай) — записът с номер N в базата на филтъра (`--baza` или `filtar_baza` в config). Базата
+  трябва да съществува; нова не се създава. Отбелязаното се вижда в следващото `izdanie` на радара.
+- `--id <хеш>` — самостоятелна оценка, запазена с `ocenka --zapazi`.
 
 **Кодове на изход:** `0` готово · `4` не е безопасно сега — машината е заета или гореща, вратата не отговаря или
 няма `gate_url` (моделът не е викан, нищо не се губи; опитай по-късно) · `1` грешка · `2` грешна употреба.

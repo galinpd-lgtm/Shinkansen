@@ -119,6 +119,7 @@
     "visoka_razlika_do": 1
   },
   "arhiv": null,
+  "filtar_baza": null,
   "proverka_roli": [
     "методист",
     "редактор"

@@ -231,6 +231,44 @@ class TestProveri(unittest.TestCase):
             kod, _, _ = pusni("proveri", "--id", "../../etc/passwd", "--ot", "редактор", "--arhiv", d)
             self.assertEqual(kod, 2)
 
+    def baza(self, d, doverie):
+        import sqlite3
+        path = os.path.join(d, "filtar.sqlite")
+        b = sqlite3.connect(path)
+        b.execute("CREATE TABLE zapisi (id INTEGER PRIMARY KEY, doverie TEXT)")
+        b.execute("INSERT INTO zapisi (id, doverie) VALUES (7, ?)", (doverie,))
+        b.execute("INSERT INTO zapisi (id, doverie) VALUES (8, NULL)")
+        b.commit()
+        b.close()
+        return path
+
+    def test_zapis_ot_radara(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self.baza(d, json.dumps({"profil": {"chovek": "одобрено в сводка"}}))
+            kod, out, _ = pusni("proveri", "--zapis", "7", "--ot", "редактор", "--baza", path)
+            self.assertEqual(kod, 0)
+            self.assertIn("запис 7", out)
+            import sqlite3
+            b = sqlite3.connect(path)
+            p = json.loads(b.execute("SELECT doverie FROM zapisi WHERE id=7").fetchone()[0])["profil"]
+            b.close()
+            self.assertEqual(p["chovek"], "проверено от човек")
+            self.assertEqual(p["pregled"]["rolya"], "редактор")
+
+    def test_zapis_greshki(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self.baza(d, "{}")
+            self.assertEqual(pusni("proveri", "--zapis", "99", "--ot", "редактор", "--baza", path)[0], 1)
+            self.assertEqual(pusni("proveri", "--zapis", "8", "--ot", "редактор", "--baza", path)[0], 1)
+            nyama = os.path.join(d, "nyama.sqlite")
+            self.assertEqual(pusni("proveri", "--zapis", "7", "--ot", "редактор", "--baza", nyama)[0], 1)
+            self.assertFalse(os.path.exists(nyama))  # не създава нова база
+            self.assertEqual(pusni("proveri", "--zapis", "7", "--ot", "Петър Примеров", "--baza", path)[0], 2)
+
+    def test_zapis_i_id_zaedno_ne(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            cli.main(["proveri", "--zapis", "7", "--id", "0123456789abcdef", "--ot", "редактор"])
+
     def test_stoynosti(self):
         self.assertEqual(CHOVEK, ("не", "одобрено в сводка", "проверено от човек"))
 

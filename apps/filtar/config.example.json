@@ -54,6 +54,7 @@
     "maks_na_izvor": 3,
     "okno_dni": 2,
     "radar_dni": 30,
+    "publichni_osi": false,
     "zaglavie": "Радар — KAGAMI",
     "link": "https://kagami.bg/radar/",
     "opisanie": "До 10 новини на ден за българска фирма: AI, софтуер, обучения, EU финансиране, регулации, Варна и България."

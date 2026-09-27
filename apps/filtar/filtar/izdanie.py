@@ -107,8 +107,10 @@ CHOVEK_ODOBRENO = "одобрено в сводка"  # Галин е видял
 
 def profil_ot(z):
     """Кратката част от профила на Z7, запазена при филтрирането (или празна за стари записи)."""
-    p = (baza.jl(z["doverie"], {}) or {}).get("profil") or {}
-    return {"uverenost": (p.get("uverenost") or {}).get("nivo"), "chovek": p.get("chovek", "не")}
+    dov = baza.jl(z["doverie"], {}) or {}
+    p = dov.get("profil") or {}
+    return {"uverenost": (p.get("uverenost") or {}).get("nivo"), "chovek": p.get("chovek", "не"),
+            "osi": {o["kluch"]: o["ocenka"] for o in dov.get("osi") or []}}
 
 
 def zapis_za_radara(z, cfg, nomer, kakvo="", znachi=""):
@@ -131,6 +133,7 @@ def zapis_za_radara(z, cfg, nomer, kakvo="", znachi=""):
         "reshenie": z["reshenie"],
         "uverenost": pr["uverenost"],
         "chovek": pr["chovek"],
+        "osi": pr["osi"],  # вътрешно; публично само с izdanie.publichni_osi
         "organizacii": baza.jl(z["organizacii"], []),
         "temi": baza.jl(z["temi"], []),
     }
@@ -233,16 +236,34 @@ def _rfc822(den_iso):
     return email.utils.format_datetime(d)
 
 
+def _chovek_sega(papka):
+    """Текущото „гледал човек“ от базата — за да се види и проверка, направена след одобрението."""
+    path = os.path.join(papka, "filtar.sqlite")
+    if not os.path.exists(path):
+        return {}
+    b = baza.otvori(papka)
+    try:
+        return {r["id"]: ((baza.jl(r["doverie"], {}) or {}).get("profil") or {}).get("chovek")
+                for r in b.execute("SELECT id, doverie FROM zapisi WHERE odobren IS NOT NULL")}
+    finally:
+        b.close()
+
+
 def izdanie(cfg, papka, izhod, dnes):
+    """Публично излизат само записи с решение ПРОПУСНИ. Оценките по отделните оси — само ако
+    izdanie.publichni_osi е включено (по подразбиране не, докато няма правна проверка)."""
     ic = cfg["izdanie"]
+    s_osi = bool(ic.get("publichni_osi", False))
     ot = (dnes - timedelta(days=ic["radar_dni"] - 1)).isoformat()
     dni = [d for d in _odobreni(papka) if ot <= d["data"] <= dnes.isoformat()]
     dni.sort(key=lambda d: d["data"], reverse=True)
     os.makedirs(os.path.join(izhod, "po-den"), exist_ok=True)
+    chovek = _chovek_sega(papka)
 
     vsichki = []
     for d in dni:
-        zapisi = [_publichen(z, d["data"]) for z in d["zapisi"]]
+        zapisi = [_publichen(dict(z, chovek=chovek.get(z.get("id")) or z.get("chovek", "не")), d["data"], s_osi)
+                  for z in d["zapisi"] if z.get("reshenie") == PUBLICHNO]
         with open(os.path.join(izhod, "po-den", "%s.json" % d["data"]), "w", encoding="utf-8") as f:
             json.dump({"data": d["data"], "zapisi": zapisi}, f, ensure_ascii=False, indent=2)
         vsichki += zapisi
@@ -255,13 +276,20 @@ def izdanie(cfg, papka, izhod, dnes):
     return {"dni": len(dni), "zapisi": len(vsichki)}
 
 
-def _publichen(z, den):
-    """Само позволените полета: заглавие, източник, дата, връзка, кратък цитат и нашата оценка.
-    Без пълния текст, без снимки и без вътрешни номера от базата."""
-    return {"data": z.get("data") or den, "odobren": den, "zaglavie": z["zaglavie"], "kakvo": z["kakvo"],
-            "znachi": z["znachi"], "citat": citat(z.get("citat")), "rubrika": z["rubrika"], "izvor": z["izvor"],
-            "ocenka": z["ocenka"], "po_dumi": z["po_dumi"], "uverenost": z.get("uverenost"),
-            "chovek": z.get("chovek", "не"), "url": z["url"], "reshenie": z["reshenie"]}
+PUBLICHNO = "ПРОПУСНИ"  # публично излиза само това решение
+
+
+def _publichen(z, den, s_osi=False):
+    """Само позволените полета: заглавие, източник, дата, връзка, кратък цитат и нашата оценка
+    (обща, увереност, гледал ли е човек, решение). Без пълния текст, без снимки и без вътрешни номера.
+    Оценките по оси — само при s_osi."""
+    p = {"data": z.get("data") or den, "odobren": den, "zaglavie": z["zaglavie"], "kakvo": z["kakvo"],
+         "znachi": z["znachi"], "citat": citat(z.get("citat")), "rubrika": z["rubrika"], "izvor": z["izvor"],
+         "ocenka": z["ocenka"], "po_dumi": z["po_dumi"], "uverenost": z.get("uverenost"),
+         "chovek": z.get("chovek", "не"), "url": z["url"], "reshenie": z["reshenie"]}
+    if s_osi:
+        p["osi"] = z.get("osi") or {}
+    return p
 
 
 def rss(ic, zapisi, dnes):

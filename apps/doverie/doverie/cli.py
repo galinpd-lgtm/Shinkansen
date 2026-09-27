@@ -1,5 +1,6 @@
 """python -m doverie ocenka --tekst file.txt | --url … [--bez-model] [--format json|tekst] [--zapazi]
-python -m doverie proveri --id <id> --ot <роля>
+python -m doverie proveri --zapis <N> --ot <роля> [--baza filtar.sqlite]   # запис от радара (основният случай)
+python -m doverie proveri --id <id> --ot <роля>                             # самостоятелна оценка от --zapazi
 python -m doverie serve [--port 8765]
 
 Кодове на изход: 0 готово · 4 не е безопасно сега — машината е заета/гореща, вратата не отговаря или няма
@@ -9,6 +10,7 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 import urllib.request
@@ -67,11 +69,14 @@ def parser():
     o.add_argument("--format", choices=("json", "tekst"), default="json")
     o.add_argument("--zapazi", action="store_true", help="запази резултата в архива (config „arhiv“) по неговото id")
     o.add_argument("--arhiv", help="папката на архива (замества config)")
-    pr = sub.add_parser("proveri", help="отбелязва запазена оценка като „проверено от човек“")
-    pr.add_argument("--id", required=True, help="id на оценката (полето „id“ в изхода)")
+    pr = sub.add_parser("proveri", help="отбелязва оценка като „проверено от човек“")
+    koya = pr.add_mutually_exclusive_group(required=True)
+    koya.add_argument("--zapis", type=int, help="номер на записа в базата на филтъра (радарът)")
+    koya.add_argument("--id", help="id на самостоятелна оценка, запазена с ocenka --zapazi")
     pr.add_argument("--ot", required=True, help="роля от config „proverka_roli“ — ролята, не името")
     pr.add_argument("--config", help="път до config.json")
     pr.add_argument("--arhiv", help="папката на архива (замества config)")
+    pr.add_argument("--baza", help="базата на филтъра filtar.sqlite (замества config „filtar_baza“)")
     s = sub.add_parser("serve", help="HTTP на 127.0.0.1: POST /ocenka")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--config", help="път до config.json")
@@ -119,6 +124,9 @@ def proveri(a):
     if a.ot not in roli:
         print("грешка: ролята трябва да е една от: %s (ролята, не името)" % ", ".join(roli), file=sys.stderr)
         return 2
+    pregled = {"rolya": a.ot, "data": datetime.now(timezone.utc).date().isoformat()}
+    if a.zapis is not None:
+        return _proveri_zapis(a, cfg, pregled)
     if not re.fullmatch(r"[0-9a-f]{16}", a.id):
         print("грешка: id е 16 знака от 0-9 и a-f", file=sys.stderr)
         return 2
@@ -126,10 +134,36 @@ def proveri(a):
     with open(path, encoding="utf-8") as f:
         rez = json.load(f)
     rez["profil"]["chovek"] = CHOVEK[2]
-    rez["profil"]["pregled"] = {"rolya": a.ot, "data": datetime.now(timezone.utc).date().isoformat()}
+    rez["profil"]["pregled"] = pregled
     with open(path, "w", encoding="utf-8") as f:
         json.dump(rez, f, ensure_ascii=False, indent=2)
     print("%s: %s (%s)" % (a.id, CHOVEK[2], a.ot))
+    return 0
+
+
+def _proveri_zapis(a, cfg, pregled):
+    """Записът от радара: профилът в колоната doverie на базата на филтъра. Базата трябва да съществува."""
+    path = a.baza or cfg.get("filtar_baza")
+    if not path:
+        raise ValueError("няма база на филтъра — задай „filtar_baza“ в конфигурацията или --baza")
+    if not os.path.exists(path):
+        raise ValueError("няма такава база: %s" % path)
+    b = sqlite3.connect("file:%s?mode=rw" % path, uri=True)
+    try:
+        r = b.execute("SELECT doverie FROM zapisi WHERE id=?", (a.zapis,)).fetchone()
+        if r is None:
+            raise ValueError("в базата няма запис %d" % a.zapis)
+        if not r[0]:
+            raise ValueError("запис %d няма оценка на Z7 (отпаднал е преди нея)" % a.zapis)
+        dov = json.loads(r[0])
+        pr = dov.setdefault("profil", {})
+        pr["chovek"] = CHOVEK[2]
+        pr["pregled"] = pregled
+        b.execute("UPDATE zapisi SET doverie=? WHERE id=?", (json.dumps(dov, ensure_ascii=False), a.zapis))
+        b.commit()
+    finally:
+        b.close()
+    print("запис %d: %s (%s)" % (a.zapis, CHOVEK[2], a.ot))
     return 0
 
 
