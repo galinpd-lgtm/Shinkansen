@@ -84,11 +84,14 @@ p{margin:0 0 1em}
 .concepts{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin:0}
 .concepts div{padding:16px;border-radius:14px;background:color-mix(in srgb,var(--ink) 4%,var(--paper))}
 .concepts dt{font-weight:700;color:var(--accent-text);margin-bottom:.3em}.concepts dd{margin:0}
-.shots{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin:1em 0}
-.shots figure{margin:0}
-.shots img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;background:color-mix(in srgb,var(--ink) 8%,var(--paper))}
+.shots{display:grid;gap:12px;grid-template-columns:1fr;margin:1em 0}
+@media (min-width:480px){.shots{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:900px){.shots{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.shots figure{margin:0;min-width:0}
+.shots img,.shots video{display:block;width:100%;max-width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:color-mix(in srgb,var(--ink) 8%,var(--paper))}
+.shots video{object-fit:contain;background:#000}
 .shots figcaption{font-size:.88rem;opacity:.8;margin-top:.35em}
-html.present .shots{grid-template-columns:repeat(auto-fill,minmax(6em,1fr))}
+html.present .shots{grid-template-columns:repeat(3,minmax(0,1fr))}
 .org-logo{display:block;max-height:56px;max-width:180px;margin-bottom:12px}
 .survey .group{font-size:1.3rem;margin:1.6em 0 .8em;padding-top:.8em;border-top:1px solid color-mix(in srgb,var(--ink) 14%,transparent)}
 

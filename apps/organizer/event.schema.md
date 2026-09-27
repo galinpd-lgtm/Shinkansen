@@ -18,7 +18,8 @@
 | `home.hero_note` | един ред под заглавието, напр. „Подгряващо събитие за [конференция](https://…)“ |
 | `home.stats` | `[{value, label}]` — „три числа“ |
 | `home.sections` | раздели `{title, intro, items[{title,text}], table{head[], rows[[]]}, list[], images[]}` |
-| `…images` | в `topics[].demo`, `topics[].sections[]`, `home.sections[]`: `[{src, alt ✱, caption}]` — `src` е файл в `assets/` на събитието; решетка под текста, всеки кадър води към пълния файл |
+| `…media` | в `topics[].demo`, `topics[].sections[]`, `home.sections[]`, `gallery.groups[]`: `[{src ✱, alt ✱, caption, poster}]`. Картинка (`.jpg .png .webp .gif .svg`) → lazy, клик отваря пълния файл; видео (`.mp4 .webm`) → `controls muted playsinline preload="metadata"`, без autoplay, `poster` по желание. Решетка: 1 колона до 480 px, 2 до 900 px, 3 над това. `caption` минава през markdown. `check`: липсващ файл е грешка; картинка над 800 KB и видео над 6 MB — предупреждение. `images` е по-старото име (само картинки) и още работи |
+| `gallery` | `{title, intro, groups: [{title, intro, media: […]}]}` → `galeria.html` в менюто |
 | `program_intro` · `schedule_intro` | увод на „Програмата“ и „Разписание“ |
 | `lab_roles` | `{id, label, text}` — колоните на лабораторията и картите „За кого“ |
 | `topics` | `{n ✱, title ✱, slug, question, summary, goals[], concepts[{term,text}], sections[], demo{title,intro,steps[]}, lab{роля:[…]}, takeaways[], source{title,text}}` |

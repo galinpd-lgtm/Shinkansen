@@ -56,6 +56,13 @@ class Check(unittest.TestCase):
         errors, _ = organizer.check(event, people)
         self.assertTrue(any(needle in e for e in errors), errors)
 
+    def test_media_rules(self):
+        self.bad(lambda e, p: e["topics"][1]["demo"]["media"][0].pop("alt"), "липсва alt")
+        self.bad(lambda e, p: e["topics"][1]["demo"]["media"][0].update(src="assets/x.mov"), "картинка")
+        self.bad(lambda e, p: e["topics"][1]["demo"]["images"].append({"src": "assets/v.mp4", "alt": "в"}), "само в media")
+        self.bad(lambda e, p: e["gallery"]["groups"][0]["media"][0].pop("alt"), "галерия/Кадри")
+        self.bad(lambda e, p: e["forms"][0].update(slug="galeria"), "slug е зает")
+
     def test_image_needs_alt_and_file(self):
         self.bad(lambda e, p: e["topics"][1]["demo"]["images"][0].pop("alt"), "липсва alt")
         self.bad(lambda e, p: e["topics"][1]["demo"]["images"][0].update(src="../x.png"), "images[0].src")
@@ -225,6 +232,33 @@ class Build(unittest.TestCase):
         nav = re.search(r"<nav>(.*?)</nav>", self.read("index.html")).group(1)
         self.assertEqual(nav.count('href="anketa.html"'), 1)
 
+    def test_media_video_and_gallery(self):
+        page = self.read("tema-02-pamet.html")
+        self.assertIn('<video controls muted playsinline preload="metadata" poster="assets/demo/primer_1.png"', page)
+        self.assertIn('<source src="assets/media/primer_video.webm" type="video/webm">', page)
+        self.assertNotIn("autoplay", page)
+        self.assertIn("<figcaption>Видео в демото: <b>без звук</b>", page)      # caption минава през md()
+        gal = self.read("galeria.html")
+        self.assertIn("<h2>Кадри</h2>", gal)
+        self.assertIn("<h2>Видео</h2>", gal)
+        self.assertIn('<a href="galeria.html" aria-current="page">Галерия</a>', gal)
+        self.assertIn('href="galeria.html">Галерия</a>', self.read("index.html"))
+        css = self.read("assets/style.css")
+        self.assertIn("@media (min-width:480px){.shots{grid-template-columns:repeat(2", css)
+        self.assertIn("@media (min-width:900px){.shots{grid-template-columns:repeat(3", css)
+
+    def test_media_files_missing_and_size(self):
+        event, _ = example()
+        with tempfile.TemporaryDirectory() as d:
+            write_event(d, event)
+            os.remove(os.path.join(d, "assets", "media", "primer_video.webm"))
+            with open(os.path.join(d, "assets", "demo", "primer_1.png"), "ab") as f:
+                f.write(b"\0" * (900 * 1024))
+            err, todo = organizer.media_files(d, event)
+            self.assertTrue(any("няма файл assets/media/primer_video.webm" in e for e in err), err)
+            self.assertTrue(any("primer_1.png е 0.9 MB" in t and "800 KB" in t for t in todo), todo)
+            self.assertEqual(organizer.main(["check", d]), 1)
+
     def test_topic_without_lab(self):
         # тема 3 в примера е защитата: "lab": false — няма блок и не е липса
         self.assertNotIn("<h2>Лаборатория</h2>", self.read("tema-03-zashtita.html"))
@@ -300,7 +334,7 @@ class Build(unittest.TestCase):
 
     def test_no_secrets_in_output(self):
         for rel in self.written:
-            if rel.endswith((".png", ".jpg", ".woff2")):
+            if rel.endswith((".png", ".jpg", ".woff2", ".webm", ".mp4", ".webp")):
                 continue
             text = self.read(rel)
             self.assertNotRegex(text, r"(?i)password\s*=|'pass'\s*=>\s*'[^'П]", rel)

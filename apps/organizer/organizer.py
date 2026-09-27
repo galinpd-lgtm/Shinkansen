@@ -43,7 +43,7 @@ COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 FONT_RE = re.compile(r"^[\w\s,'\"-]+$")
 LOCAL_RE = re.compile(r"^[\w][\w./-]*$")
 URL_RE = re.compile(r"^(https://|[\w][\w./#-]*$)")
-FIXED_PAGES = {"index", "programa", "razpisanie", "lektori", "organizatori", "privacy"}
+FIXED_PAGES = {"index", "programa", "razpisanie", "lektori", "organizatori", "privacy", "galeria"}
 RESERVED_SLUGS = FIXED_PAGES | {"api", "admin", "assets", "data", "sql"}
 MONTHS = ["януари", "февруари", "март", "април", "май", "юни", "юли", "август",
           "септември", "октомври", "ноември", "декември"]
@@ -230,22 +230,36 @@ def check(event, people):
         if days and n not in in_schedule:
             todo.append("тема %s: не е в разписанието" % n)
 
-    img_lists = [("home.sections[%d]" % i, x.get("images")) for i, x in enumerate(event.get("home", {}).get("sections", []))]
+    img_lists = [("home.sections[%d]" % i, x) for i, x in enumerate(event.get("home", {}).get("sections", []))]
     for t in topics:
         if isinstance(t.get("demo"), dict):
-            img_lists.append(("тема %s/демо" % t.get("n"), t["demo"].get("images")))
-        img_lists += [("тема %s/%s" % (t.get("n"), x.get("title")), x.get("images")) for x in t.get("sections", [])]
-    for where, imgs in img_lists:
-        if imgs is None:
-            continue
-        if not isinstance(imgs, list):
-            err.append("%s: images е списък" % where)
-            continue
-        for k, im in enumerate(imgs):
-            if not isinstance(im, dict) or not im.get("src") or not LOCAL_RE.match(im["src"]) or ".." in im["src"]:
-                err.append("%s: images[%d].src — относителен път в папката на събитието (assets/…)" % (where, k))
-            elif not str(im.get("alt", "")).strip():
-                err.append("%s: images[%d] (%s) — липсва alt: с думи какво има на кадъра" % (where, k, im["src"]))
+            img_lists.append(("тема %s/демо" % t.get("n"), t["demo"]))
+        img_lists += [("тема %s/%s" % (t.get("n"), x.get("title")), x) for x in t.get("sections", [])]
+    gal = event.get("gallery")
+    if gal is not None:
+        if not isinstance(gal, dict) or not isinstance(gal.get("groups", []), list):
+            err.append("gallery: {title, intro, groups: [{title, intro, media: […]}]}")
+        else:
+            img_lists += [("галерия/%s" % g.get("title"), g) for g in gal.get("groups", []) if isinstance(g, dict)]
+    for where, holder in img_lists:
+        for key in ("media", "images"):
+            imgs = holder.get(key) if isinstance(holder, dict) else None
+            if imgs is None:
+                continue
+            if not isinstance(imgs, list):
+                err.append("%s: %s е списък" % (where, key))
+                continue
+            for k, im in enumerate(imgs):
+                src = im.get("src") if isinstance(im, dict) else None
+                if not src or not LOCAL_RE.match(src) or ".." in src:
+                    err.append("%s: %s[%d].src — относителен път в папката на събитието (assets/…)" % (where, key, k))
+                elif not src.lower().endswith(VIDEO_EXT + IMAGE_EXT) or (key == "images" and src.lower().endswith(VIDEO_EXT)):
+                    err.append("%s: %s[%d] (%s) — картинка (%s) или видео (%s)" % (
+                        where, key, k, src, " ".join(IMAGE_EXT), " ".join(VIDEO_EXT) if key == "media" else "само в media"))
+                elif not str(im.get("alt", "")).strip():
+                    err.append("%s: %s[%d] (%s) — липсва alt: с думи какво има на кадъра" % (where, key, k, src))
+                elif im.get("poster") and (not LOCAL_RE.match(im["poster"]) or ".." in im["poster"]):
+                    err.append("%s: %s[%d].poster — относителен път" % (where, key, k))
 
     forms = event.get("forms", [])
     ids, slugs, tables = set(), set(), set()
@@ -414,6 +428,8 @@ def page(event, name, title, body, demo, current=None, extra_scripts=(), descrip
             head.append('<link rel="next" href="%s">' % order[k + 1])
     nav = [("programa.html", "Програмата"), ("razpisanie.html", "Разписание"),
            ("lektori.html", "Лектори"), ("organizatori.html", "Организатори")]
+    if event.get("gallery"):
+        nav.append(("galeria.html", event["gallery"].get("title", "Галерия")))
     form = main_form(event)
     if form:
         nav.append((form["slug"] + ".html", event.get("cta", {}).get("label") or form["title"]))
@@ -479,14 +495,75 @@ def table(tbl):
     return '<div class="table-wrap"><table class="grid"><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>' % (head, rows)
 
 
-def images_grid(imgs):
-    """Малка решетка от кадри: всеки води към пълния файл; alt е задължителен (check), lazy зареждане."""
-    if not imgs:
+VIDEO_EXT = (".mp4", ".webm")
+IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg")
+
+
+MAX_IMAGE, MAX_VIDEO = 800 * 1024, 6 * 1024 * 1024
+
+
+def media_items(event):
+    """[(къде, запис)] за всяко media/images в началото, темите и галерията."""
+    holders = [("начало/%s" % x.get("title"), x) for x in event.get("home", {}).get("sections", [])]
+    for t in event.get("topics", []):
+        if isinstance(t.get("demo"), dict):
+            holders.append(("тема %s/демо" % t.get("n"), t["demo"]))
+        holders += [("тема %s/%s" % (t.get("n"), x.get("title")), x) for x in t.get("sections", [])]
+    gal = event.get("gallery")
+    if isinstance(gal, dict):
+        holders += [("галерия/%s" % g.get("title"), g) for g in gal.get("groups", []) if isinstance(g, dict)]
+    return [(w, m) for w, h in holders for m in media_of(h) if isinstance(m, dict) and m.get("src")]
+
+
+def media_files(folder, event):
+    """Файловете на кадрите: липсващ → грешка; видео над 6 MB и картинка над 800 KB → предупреждение."""
+    err, todo = [], []
+    for where, m in media_items(event):
+        for key in ("src", "poster"):
+            rel = m.get(key)
+            if not rel or not LOCAL_RE.match(rel) or ".." in rel:
+                continue
+            path = os.path.join(folder, rel)
+            if not os.path.isfile(path):
+                err.append("%s: няма файл %s" % (where, rel))
+                continue
+            size = os.path.getsize(path)
+            limit = MAX_VIDEO if rel.lower().endswith(VIDEO_EXT) else MAX_IMAGE
+            if size > limit:
+                todo.append("%s: %s е %.1f MB (препоръка до %s) — зарежда се бавно на телефон" % (
+                    where, rel, size / 1048576, "6 MB" if limit == MAX_VIDEO else "800 KB"))
+    return err, todo
+
+
+def media_of(obj):
+    """media (картинки и видео) + images (по-старото име, само картинки) на раздел, демо или група."""
+    if not isinstance(obj, dict):
+        return []
+    return list(obj.get("media") or []) + list(obj.get("images") or [])
+
+
+def media_grid(items):
+    """Решетка 1/2/3 колони: картинка → lazy, клик отваря пълния файл; видео → controls, muted, без autoplay.
+    alt е задължителен (check); caption минава през md()."""
+    if not items:
         return ""
-    return '<div class="shots">%s</div>' % "".join(
-        '<figure><a href="%s"><img src="%s" alt="%s" loading="lazy"></a>%s</figure>' % (
-            esc(i["src"]), esc(i["src"]), esc(i["alt"]),
-            '<figcaption>%s</figcaption>' % md(i["caption"]) if i.get("caption") else "") for i in imgs)
+    out = []
+    for i in items:
+        cap = '<figcaption>%s</figcaption>' % md(i["caption"]) if i.get("caption") else ""
+        src = i["src"]
+        if src.lower().endswith(VIDEO_EXT):
+            poster = ' poster="%s"' % esc(i["poster"]) if i.get("poster") else ""
+            kind = "video/webm" if src.lower().endswith(".webm") else "video/mp4"
+            out.append('<figure class="video"><video controls muted playsinline preload="metadata"%s aria-label="%s">'
+                       '<source src="%s" type="%s"><a href="%s">%s</a></video>%s</figure>' % (
+                           poster, esc(i["alt"]), esc(src), kind, esc(src), esc(i["alt"]), cap))
+        else:
+            out.append('<figure><a href="%s"><img src="%s" alt="%s" loading="lazy"></a>%s</figure>' % (
+                esc(src), esc(src), esc(i["alt"]), cap))
+    return '<div class="shots">%s</div>' % "".join(out)
+
+
+images_grid = media_grid   # старото име
 
 
 def demo_results(r):
@@ -518,8 +595,8 @@ def section(s, cls=""):
         parts.append(table(s["table"]))
     if s.get("list"):
         parts.append('<ul class="ticks">%s</ul>' % "".join("<li>%s</li>" % md(x) for x in s["list"]))
-    if s.get("images"):
-        parts.append(images_grid(s["images"]))
+    if media_of(s):
+        parts.append(media_grid(media_of(s)))
     return block("\n".join(parts), s.get("cls", cls), s["title"])
 
 
@@ -603,7 +680,7 @@ def topic(event, t, demo):
         dm = t["demo"]
         parts.append(block('<h2>%s</h2>\n%s<ol class="steps">%s</ol>' % (
             esc(dm.get("title", "Демо на живо")), '<p class="lead">%s</p>' % md(dm["intro"]) if dm.get("intro") else "",
-            "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))) + images_grid(dm.get("images"))
+            "".join("<li>%s</li>" % md(x) for x in dm.get("steps", []))) + media_grid(media_of(dm))
             + demo_results(dm.get("results")), "demo", "Демо на живо"))
     roles = event.get("lab_roles", [])
     if roles and t.get("lab") is not False:
@@ -694,6 +771,16 @@ def organizatori(event, people, demo):
     parts.append(block('<h2>Партньори</h2>\n' + people_grid(event, people, "partners"), "people-block", "Партньори"))
     return page(event, "organizatori.html", "Организатори", "\n".join(parts), demo, current="organizatori.html",
                 extra_scripts=("people.js",))
+
+
+def galeria(event, demo):
+    g = event["gallery"]
+    parts = [hero(event["title"], g.get("title", "Галерия"), g.get("intro", ""))]
+    for grp in g.get("groups", []):
+        parts.append(block('<h2>%s</h2>\n%s%s' % (esc(grp.get("title", "")),
+                     '<p class="lead">%s</p>' % md(grp["intro"]) if grp.get("intro") else "", media_grid(media_of(grp))),
+                     "gallery", grp.get("title")))
+    return page(event, "galeria.html", g.get("title", "Галерия"), "\n".join(parts), demo, current="galeria.html")
 
 
 def privacy(event, demo):
@@ -867,7 +954,7 @@ def forbidden_hits(out, written, forbid, forbid_regex=()):
     hits = []
     rx = [re.compile(r) for r in forbid_regex]
     for rel in written:
-        if rel.endswith((".png", ".jpg", ".jpeg", ".webp", ".woff", ".woff2", ".ico", ".gif")):
+        if rel.endswith((".png", ".jpg", ".jpeg", ".webp", ".woff", ".woff2", ".ico", ".gif", ".mp4", ".webm", ".pdf")):
             continue
         with open(os.path.join(out, rel), encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -889,6 +976,9 @@ def build(folder, out, demo=False):
     event, people = load(folder)
     errors, todo = check(event, people)
     errors += ops.check_sources(folder, event)
+    m_err, m_todo = media_files(folder, event)
+    errors += m_err
+    todo += m_todo
     if errors:
         raise ValueError("\n".join(errors))
     os.makedirs(out, exist_ok=True)
@@ -926,6 +1016,8 @@ def build(folder, out, demo=False):
     write("organizatori.html", organizatori(event, people, demo))
     if event.get("privacy"):
         write("privacy.html", privacy(event, demo))
+    if event.get("gallery"):
+        write("galeria.html", galeria(event, demo))
     for f in event.get("forms", []):
         write(f["slug"] + ".html", form_page(event, f, demo))
     for kind, rel in people_files(event).items():
@@ -1122,6 +1214,9 @@ def main(argv=None):
     errors, todo = check(event, people)
     import ops
     errors += ops.check_sources(args.folder, event)
+    m_err, m_todo = media_files(args.folder, event)
+    errors += m_err
+    todo += m_todo
     marker = event.get("publish", {}).get("pending_marker", "[ЧАКА")
     waits = pending(event, marker) + pending(people, marker, "data")
     if args.cmd == "check":
