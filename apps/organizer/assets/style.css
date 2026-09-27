@@ -82,7 +82,7 @@ p{margin:0 0 1em}
 .concepts{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin:0}
 .concepts div{padding:16px;border-radius:14px;background:color-mix(in srgb,var(--ink) 4%,var(--paper))}
 .concepts dt{font-weight:700;color:var(--accent-text);margin-bottom:.3em}.concepts dd{margin:0}
-.shots{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin:1em 0}
+.shots{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin:1em 0}
 .shots figure{margin:0}
 .shots img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;background:color-mix(in srgb,var(--ink) 8%,var(--paper))}
 .shots figcaption{font-size:.88rem;opacity:.8;margin-top:.35em}

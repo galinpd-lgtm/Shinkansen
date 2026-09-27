@@ -4,6 +4,8 @@
     python3 organizer.py new ПАПКА                 # ново събитие от примерния шаблон
     python3 organizer.py check ПАПКА               # грешки, липси и всички „[ЧАКА …]“
     python3 organizer.py build ПАПКА ИЗХОД [--demo]
+    python3 organizer.py package САЙТ ПАПКА [--prev ПРЕДИШЕН]   # за качване: tgz, SHA-256, разлика
+    python3 organizer.py qa ПАПКА ОТЧЕТ [--no-shots]            # A5 с една команда
 
 ПАПКА съдържа event.json, data/ (лектори и партньори — по един запис на човек) и по желание
 assets/ (лого, локални шрифтове), което се копира в изхода. Истинските събития стоят извън
@@ -967,12 +969,40 @@ def main(argv=None):
     b.add_argument("folder")
     b.add_argument("out")
     b.add_argument("--demo", action="store_true", help="без изпращане на въпросниците и без PHP")
+    pk = sub.add_parser("package", help="tgz + SHA-256 + списък на файловете + разлика спрямо предишния")
+    pk.add_argument("site")
+    pk.add_argument("out")
+    pk.add_argument("--prev", help="предишен пакет (.tgz / .manifest.txt) или папка")
+    pk.add_argument("--name", help="начало на името на пакета (по подразбиране — името на папката)")
+    q = sub.add_parser("qa", help="проверка A5: сглобяване, въпросниците на живо (PHP + SQLite), 360/1440 px")
+    q.add_argument("folder")
+    q.add_argument("report")
+    q.add_argument("--no-shots", action="store_true", help="без браузъра")
     try:
         args = ap.parse_args(argv)
     except SystemExit as e:
         return 2 if e.code else 0
     if args.cmd == "new":
         return cmd_new(args.folder)
+    if args.cmd == "package":
+        import ops
+        try:
+            r = ops.package(args.site, args.out, name=args.name, prev=args.prev)
+        except (OSError, ValueError) as e:
+            print("пакет: %s" % e, file=sys.stderr)
+            return 1
+        print("%s%s · %d файла · %d байта" % (r["tgz"], " (вече го има — същото съдържание)" if r["existed"] else "",
+                                            r["files"], r["bytes"]))
+        print("sha256 %s" % r["sha256"])
+        if r["diff"] is not None:
+            import ops as _o
+            print(_o.diff_text(r["diff"]), end="")
+        return 0
+    if args.cmd == "qa":
+        import ops
+        path, failed = ops.qa(args.folder, args.report, shots=not args.no_shots, build=build)
+        print("отчет: %s · %s" % (path, "всичко минава" if not failed else "%d неуспешни" % failed))
+        return 1 if failed else 0
     try:
         event, people = load(args.folder)
     except (OSError, ValueError) as e:
