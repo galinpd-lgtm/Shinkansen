@@ -1,0 +1,39 @@
+{
+  "ollama_url": "http://127.0.0.1:11435",
+  "gate_url": "http://127.0.0.1:9109/vrata",
+  "taymaut_s": 120,
+  "model": {
+    "pisach":   {"ime": "gemma4:26b",  "think": "low"},
+    "struktura": {"ime": "gpt-oss:20b", "think": "low"}
+  },
+  "tegla": {
+    "reputaciya": 0.15,
+    "proverimost": 0.20,
+    "prozrachnost": 0.15,
+    "originalnost": 0.10,
+    "obshtestven_interes": 0.15,
+    "manipulaciya": 0.15,
+    "palnota": 0.10
+  },
+  "po_dumi": [
+    [8.5, "Много добра"],
+    [7.0, "Добра"],
+    [5.0, "Средна"],
+    [3.0, "Ниска"],
+    [0.0, "Много ниска"]
+  ],
+  "reshenie": {
+    "propusni_ot": 7.0,
+    "karantina_pod": 4.0,
+    "ai_karantina_ot": 0.85,
+    "ai_flag_ot": 0.5,
+    "bez_iztochnici_do": 2.0
+  },
+  "originalnost": {"prag": 0.92, "shingal": 5},
+  "pamet": null,
+  "rep_neizvesten": 5.0,
+  "registar_iztochnici": [
+    {"domain": "example.org", "ime": "Примерен вестник", "rep_score": 7.5},
+    {"domain": "example.net", "ime": "Примерен портал", "rep_score": 4.0}
+  ]
+}
