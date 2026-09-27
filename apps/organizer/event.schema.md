@@ -9,7 +9,7 @@
 | `lang` | `bg` по подразбиране |
 | `title` ✱ · `tagline` · `description` | заглавие, подзаглавие, описание за търсачките (датата се добавя сама) |
 | `brand.name` ✱ · `brand.logo` · `brand.ribbon` · `brand.legal` | марката горе (или лого от `assets/`), лентата над нея, правното име долу |
-| `theme` | `accent`, `ink`, `paper`, `hero_bg`, `hero_ink` (`#rrggbb`); `accent_text` — по-тъмен оттенък за дребен текст, когато акцентът е светъл (контраст ≥ 4,5:1); `on_accent` — текстът върху бутоните; `font_display`, `font_body`, `font_mono`, `font_brand` (само името на марката — за шрифт без кирилица); `stylesheets` — локални CSS (напр. `assets/fonts/fonts.css` за офлайн); `fonts_css` — само `https://fonts.googleapis.com/…` |
+| `theme` | `accent`, `ink`, `paper`, `hero_bg`, `hero_ink` (`#rrggbb`); `accent_text` — по-тъмен оттенък за дребен текст, когато акцентът е светъл (контраст ≥ 4,5:1); `on_accent` — текстът върху бутоните; `font_display`, `font_body`, `font_mono`, `font_brand` (само името на марката — за шрифт без кирилица); `stylesheets` — локални CSS (напр. `assets/fonts/fonts.css` за офлайн); `scripts` — локални `.js` на всяка страница преди `</body>`, с `defer` (напр. `assets/eva/eva.js`); `script_attrs` — `{"data-…": "…"}` към тях; `page_audio` — шаблон `assets/eva/audio/{page}.mp3`: `check` предупреждава за страница без звук; `fonts_css` — само `https://fonts.googleapis.com/…` |
 | `dates.from` ✱ · `dates.to` ✱ · `dates.label` | ГГГГ-ММ-ДД; `label` е как да се изпише |
 | `place` | `name`, `seats`, `note` |
 | `publish` | `indexable` (false до „go“), `base_url`, `forbid_text` (низове), `forbid_regex` (изрази, напр. `(?<!Е)ООД`), `pending_marker` (по подразбиране `[ЧАКА`) |

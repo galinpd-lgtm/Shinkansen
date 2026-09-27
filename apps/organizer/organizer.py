@@ -140,6 +140,20 @@ def check(event, people):
     for s in theme.get("stylesheets", []):
         if not LOCAL_RE.match(s) or ".." in s:
             err.append("theme.stylesheets: само локални файлове (напр. assets/fonts/fonts.css)")
+    scripts = theme.get("scripts", [])
+    if not isinstance(scripts, list):
+        err.append("theme.scripts: списък от пътища")
+        scripts = []
+    for sc in scripts:
+        if not isinstance(sc, str) or not LOCAL_RE.match(sc) or ".." in sc or not sc.endswith(".js"):
+            err.append("theme.scripts: само локални .js файлове (напр. assets/eva/eva.js), не „%s“" % sc)
+    attrs = theme.get("script_attrs", {})
+    if not isinstance(attrs, dict) or any(not re.match(r"^data-[a-z0-9-]{1,40}$", str(k)) or not isinstance(v, str)
+                                          for k, v in attrs.items()):
+        err.append("theme.script_attrs: {\"data-…\": \"текст\"} — само data- атрибути")
+    pa = theme.get("page_audio")
+    if pa and (not isinstance(pa, str) or "{page}" not in pa or not LOCAL_RE.match(pa.replace("{page}", "x")) or ".." in pa):
+        err.append("theme.page_audio: локален път с {page}, напр. assets/eva/audio/{page}.mp3")
 
     d = event.get("dates", {})
     parsed = {}
@@ -445,6 +459,8 @@ def page(event, name, title, body, demo, current=None, extra_scripts=(), descrip
     legal = esc(brand.get("legal") or brand["name"])
     privacy = ' · <a href="privacy.html">Поверителност</a>' if event.get("privacy") else ""
     scripts = "".join('<script src="assets/%s" defer></script>' % s for s in ("present.js",) + tuple(extra_scripts))
+    extra_attrs = "".join(' %s="%s"' % (k, esc(v)) for k, v in sorted(theme.get("script_attrs", {}).items()))
+    scripts += "".join('<script src="%s" defer%s></script>' % (esc(sc), extra_attrs) for sc in theme.get("scripts", []))
     full_title = title if name == "index.html" else "%s · %s" % (title, event["title"])
     desc = description or event.get("description") or event.get("tagline", "")
     return """<!doctype html>
@@ -515,9 +531,28 @@ def media_items(event):
     return [(w, m) for w, h in holders for m in media_of(h) if isinstance(m, dict) and m.get("src")]
 
 
+def page_names(event):
+    """Страниците, които build ще направи (без .html)."""
+    names = ["index", "programa"] + [topic_page(t)[:-5] for t in event.get("topics", []) if isinstance(t.get("n"), int)]
+    names += ["razpisanie", "lektori", "organizatori"]
+    names += ["privacy"] if event.get("privacy") else []
+    names += ["galeria"] if event.get("gallery") else []
+    return names + [f["slug"] for f in event.get("forms", []) if f.get("slug")]
+
+
 def media_files(folder, event):
-    """Файловете на кадрите: липсващ → грешка; видео над 6 MB и картинка над 800 KB → предупреждение."""
+    """Файловете на кадрите: липсващ → грешка; видео над 6 MB и картинка над 800 KB → предупреждение.
+    Също: theme.scripts да ги има; theme.page_audio — предупреждение за страница без звук."""
     err, todo = [], []
+    theme = event.get("theme", {})
+    for sc in theme.get("scripts", []) if isinstance(theme.get("scripts"), list) else []:
+        if isinstance(sc, str) and LOCAL_RE.match(sc) and ".." not in sc and not os.path.isfile(os.path.join(folder, sc)):
+            err.append("theme.scripts: няма файл %s" % sc)
+    pa = theme.get("page_audio")
+    if isinstance(pa, str) and "{page}" in pa and ".." not in pa:
+        missing = [n for n in page_names(event) if not os.path.isfile(os.path.join(folder, pa.replace("{page}", n)))]
+        if missing:
+            todo.append("звук: няма %s за %d страници: %s" % (pa, len(missing), ", ".join(missing)))
     for where, m in media_items(event):
         for key in ("src", "poster"):
             rel = m.get(key)
