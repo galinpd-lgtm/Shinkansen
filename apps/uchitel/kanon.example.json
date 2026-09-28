@@ -1,0 +1,89 @@
+{
+  "_opisanie": "Канонът на академията. Всичко, което Учител проверява и поправя, е тук, не в кода. Частното копие е kanon.json (не влиза в репото).",
+
+  "izklyuchi": [],
+  "rasshireniya": [".html", ".htm"],
+
+  "lenta": {
+    "_opisanie": "Заглавната лента: първият елемент с такъв клас или таг. Логото се търси първо в нея.",
+    "klasove": ["topbar", "top-bar", "navbar", "site-header"],
+    "tagove": ["header", "nav"]
+  },
+
+  "logo": {
+    "znak": "primeri/znak_primer.png",
+    "tekst": "КАГАМИ",
+    "klasove": ["topbar-brand", "logo", "brand", "nav-brand", "navbar-brand", "site-logo"],
+    "marker_klas": "kg-logo",
+    "mahni_dumi": ["KAGAMI", "КАГАМИ", "Kagami"],
+    "mahni_simvoli": true,
+    "zapazeni_imena": ["KAGAMI Way"],
+    "imena": {"n8n Академия": "n8n", "DevStation Академия": "DevStation"},
+    "ime_po_papka": {},
+    "min_dalzhina": 2,
+    "max_dalzhina": 48,
+    "vatreshnost": "<span class=\"kg-logo\"><img class=\"kg-logo-znak\" src=\"{znak}\" alt=\"\" width=\"28\" height=\"28\"><span class=\"kg-logo-dumi\"><span class=\"kg-logo-ime\">{tekst}</span><span class=\"kg-logo-kurs\">{kurs}</span></span></span>",
+    "kurs_dvuezichno": "<span class=\"bg-only\">{bg}</span><span class=\"en-only\">{en}</span>",
+    "nov_blok": "<span class=\"topbar-brand\">{vatreshnost}</span>",
+    "css": ".kg-logo{display:inline-flex;align-items:center;gap:.55rem;text-transform:none;letter-spacing:normal;line-height:1.1}.kg-logo-znak{width:28px;height:28px;flex-shrink:0;display:block}.kg-logo-dumi{display:flex;flex-direction:column}.kg-logo-ime{font-family:'Sora',sans-serif;font-style:italic;font-weight:800;font-size:.95rem;letter-spacing:.04em;color:var(--text,#e2e8f0)}.kg-logo-kurs{font-family:'Sora',sans-serif;font-style:normal;font-weight:400;font-size:.68rem;color:var(--muted2,#94a3b8)}"
+  },
+
+  "shriftove": {
+    "tekst": "Sora",
+    "kod": "JetBrains Mono",
+    "zameni": ["DM Serif Display", "Plus Jakarta Sans", "Inter"],
+    "pozvoleni": ["Sora", "JetBrains Mono", "sans-serif", "serif", "monospace", "system-ui", "ui-monospace",
+                  "inherit", "initial", "unset"],
+    "google_fonts": "https://fonts.googleapis.com/css2?family=Sora:ital,wght@0,300;0,400;0,600;0,700;0,800;1,700;1,800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+  },
+
+  "izgledi": {
+    "bg_klas": "bg-only",
+    "en_klas": "en-only",
+    "agent_klas": "agent-only",
+    "prevkluchvatel_ezik": ["setLang\\(\\s*['\"]bg['\"]", "setLang\\(\\s*['\"]en['\"]"],
+    "etiketi": {"HUMAN": "Човек", "AGENT": "Агент"},
+    "etiket_shablon": "<span class=\"bg-only\">{bg}</span><span class=\"en-only\">{en}</span>",
+    "kirilica": "[\\u0400-\\u04FF]"
+  },
+
+  "tamna_tema": {
+    "tryabva": ["--bg\\s*:\\s*#07090f"],
+    "zabraneni": ["#f5f5f0", "#2e7d32"]
+  },
+
+  "iztichane": {
+    "mrezhi": ["100.64.0.0/10", "192.168.0.0/16"], "_mrezhi": "leak-filter: ignore — това са мрежите, които се търсят",
+    "shabloni": {
+      "парола": "(?i)(?:парола|password|passwd|pwd|passphrase|pin)\\s*[:=]\\s*\\S{4,}",
+      "ключ": "(?i)\\b(?:api[_-]?key|secret|token|access[_-]?token)\\b\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-./+]{8,}",
+      "токен": "\\b(?:sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{32,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35})",
+      "частен-ключ": "-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY",
+      "e-mail": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+      "телефон": "(?:\\+359[\\s-]?\\d(?:[\\s-]?\\d){7,8}|\\b0[89]\\d(?:[\\s-]?\\d){6,7}\\b)",
+      "път": "(?i)\\b[A-Z]:\\\\Users\\\\[^\\\\\\s\"'<]+|/home/[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+"
+    },
+    "pozvoleni": ["example.com", "example.org", "/home/user", "/Users/user", "\\Users\\user"],
+    "zabraneni_dumi": []
+  },
+
+  "chist_balgarski": {
+    "izklyucheniya": ["KAGAMI", "КАГАМИ", "n8n", "DevStation", "GX10", "Claude", "Ollama", "GitHub", "Gitea",
+                      "Docker", "Linux", "Python", "Blender", "ComfyUI", "FLUX", "Tailscale", "Syncthing",
+                      "NVIDIA", "Blackwell", "OpenClaw", "LoRA", "Sora", "JetBrains", "Mono", "Google",
+                      "Windows", "PowerShell", "Eva", "Buddy", "Way"],
+    "akronim_max": 4,
+    "propusni_tagove": ["script", "style", "code", "pre", "kbd", "samp", "svg", "title", "head"],
+    "propusni_klasove": ["code-header", "code-lang"],
+    "pokazhi_do": 12
+  },
+
+  "celost": {
+    "broi": {
+      "заглавия": "h1,h2,h3,h4,h5,h6",
+      "секции": "section,.sec",
+      "връзки": "a[href]",
+      "код": "pre,.code-block"
+    }
+  }
+}

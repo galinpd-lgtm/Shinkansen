@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="bg"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>AA-01 — Ролите в екипа | KAGAMI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07090f;--surface:#0e1420;--border:#1e2d42;--accent:#00c9a7;--text:#e2e8f0;--muted2:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.7}
+body[data-mode="ai"] .human-only{display:none!important}
+body[data-mode="human"] .agent-only{display:none!important}
+body.lang-bg .en-only{display:none!important}
+body.lang-en .bg-only{display:none!important}
+.topbar{position:sticky;top:0;display:flex;align-items:center;gap:1.2rem;padding:.7rem 2rem;border-bottom:1px solid var(--border)}
+.topbar-brand{font-size:.78rem;font-weight:700;color:var(--accent);text-transform:uppercase;font-family:'JetBrains Mono',monospace}
+.topbar-right{margin-left:auto;display:flex;gap:.6rem}
+.tb-btn{font-family:'JetBrains Mono',monospace;font-size:.65rem;background:transparent;color:var(--muted2);border:none}
+.page{max-width:1000px;margin:0 auto;padding:0 2rem}
+.hero h1{font-family:'Inter', 'Sora', sans-serif;font-size:2.4rem}
+.agent-view{font-family:'JetBrains Mono',monospace;border:1px solid var(--accent);padding:1.6rem}
+code{font-family:'JetBrains Mono',monospace}
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
+.note{font:600 .9rem/1.5 'Inter',sans-serif}
+</style>
+</head><body data-mode="human" class="lang-bg">
+<div class="topbar">
+  <div class="logo">🧠 AI Архитект Академия</div>
+  <nav class="topbar-nav">
+    <a href="#s1"><span class="bg-only">1. Начало</span><span class="en-only">1. Start</span></a>
+    <a href="#s2"><span class="bg-only">2. Практика</span><span class="en-only">2. Practice</span></a>
+  </nav>
+  <div class="topbar-right">
+    <div class="tb-group"><button class="tb-btn is-active" id="btn-human" onclick="setMode('human')">HUMAN</button><button class="tb-btn" id="btn-agent" onclick="setMode('agent')">AGENT</button></div>
+    <div class="tb-group"><button class="tb-btn is-active" id="btn-bg" onclick="setLang('bg')">БГ</button><button class="tb-btn" id="btn-en" onclick="setLang('en')">EN</button></div>
+  </div>
+</div>
+
+<!-- AGENT VIEW — ENGLISH ONLY -->
+<div class="agent-only agent-view">
+  <div class="av-section"><div class="av-label">IDENTITY</div>
+    <dl class="av-kv"><dt>module</dt><dd>AA-01 · Roles in the team</dd><dt>level</dt><dd>Beginner</dd><dt>duration</dt><dd>~20 min</dd></dl></div>
+  <div class="av-section"><div class="av-label">PURPOSE</div><p class="av-text">Define human, model and agent roles.</p></div>
+  <div class="av-section"><div class="av-label">CHECKLIST</div><ul class="av-checklist"><li>Read the module</li></ul></div>
+</div>
+
+<!-- HUMAN — bilingual -->
+<div class="human-only page">
+  <div class="hero">
+    <h1><span class="bg-only">Ролите в екипа</span><span class="en-only">Roles in the team</span></h1>
+    <div class="hero-chips"><span class="chip chip-time">⏱ ~20 мин</span><span class="chip chip-level"><span class="bg-only">Начално</span><span class="en-only">Beginner</span></span></div>
+  </div>
+  <div class="sec" id="s1">
+    <h2 class="sec-title"><span class="bg-only">1. Три роли</span><span class="en-only">1. Three roles</span></h2>
+    <p><span class="bg-only">Човекът решава, моделът предлага, агентът изпълнява само одобреното.</span><span class="en-only">The human decides, the model proposes, the agent executes only what is approved.</span></p>
+    <div class="code-block"><div class="code-header"><span class="code-lang">bash</span><button class="code-copy" onclick="copyCode(this)"><span class="bg-only">копирай</span><span class="en-only">copy</span></button></div>
+      <pre><code># роли
+човек → решава
+модел → предлага
+агент → изпълнява</code></pre></div>
+  </div>
+  <section class="sec" id="s2">
+    <h2 class="sec-title"><span class="bg-only">2. Кой какво подписва</span><span class="en-only">2. Who signs what</span></h2>
+    <p class="note" style="font-family:'Inter',sans-serif"><span class="bg-only">Подписът е на човека. Винаги.</span><span class="en-only">The signature is the human's. Always.</span></p>
+  </section>
+  <a class="next-card" href="index.html"><div class="next-title"><span class="bg-only">Към съдържанието</span><span class="en-only">Back to contents</span></div><div class="next-arrow">→</div></a>
+</div>
+
+<script>
+function setMode(m){document.body.setAttribute('data-mode',m==='agent'?'ai':'human');localStorage.setItem('kgm_mode',m);}
+function setLang(l){document.body.className=document.body.className.replace(/lang-\S+/,'')+' lang-'+l;localStorage.setItem('kgm_lang',l);}
+function copyCode(btn){var pre=btn.closest('.code-block').querySelector('pre');navigator.clipboard.writeText(pre.innerText);}
+(function(){setMode(localStorage.getItem('kgm_mode')||'human');setLang(localStorage.getItem('kgm_lang')||'bg');})();
+</script>
+</body></html>

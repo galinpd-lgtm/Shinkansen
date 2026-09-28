@@ -4,3 +4,5 @@ __pycache__/
 *.key
 out/
 _site/
+apps/uchitel/kanon.json
+uchitel_otchet/
