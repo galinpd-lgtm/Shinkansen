@@ -6,8 +6,20 @@ from . import registar as rg
 from .proverki import IMENA as PROVERKI
 
 RED = (rg.ODOBREN, rg.VALIDIRAN, rg.ZA_PREGLED, rg.KANDIDAT, rg.OTKAZAN)
+ZASHTITENI = "zashtiteni"  # кандидати с непрочетена страница — само група в отчета, не състояние
+GRUPI = (rg.ODOBREN, rg.VALIDIRAN, rg.ZA_PREGLED, ZASHTITENI, rg.KANDIDAT, rg.OTKAZAN)
 ZAGLAVIYA = {rg.ODOBREN: "Одобрени", rg.VALIDIRAN: "Валидирани — чакат човек", rg.ZA_PREGLED: "За преглед",
-             rg.KANDIDAT: "Кандидати", rg.OTKAZAN: "Отказани"}
+             ZASHTITENI: "Защитени — чакат ръчна проверка", rg.KANDIDAT: "Кандидати", rg.OTKAZAN: "Отказани"}
+PRAVILO = ("Непрочетена страница (защита 401/403, robots или друг код без тяло) не е „валидиран“: остава "
+           "кандидат, докато някой не я провери на ръка или не се намери друг канал.")
+
+
+def zashtiten(z):
+    return z["sastoyanie"] == rg.KANDIDAT and bool((z.get("proverki") or {}).get("zhiv", {}).get("neprochetena"))
+
+
+def grupa_na(z):
+    return ZASHTITENI if zashtiten(z) else z["sastoyanie"]
 KOLONI = ("domeyn", "zhiv", "emisiya", "razresheniya", "ezik", "vid_sadarzhanie")  # ешелонът е отделна колона
 
 
@@ -54,13 +66,14 @@ def md(r, cfg, pat, sega):
            "Регистър: `%s` · към %s UTC · %d източника" % (pat, sega, len(izvori)), "",
            "| Състояние | Брой |", "|---|---|"]
     red += ["| %s | %d |" % (rg.IMENA[s], broy[s]) for s in RED]
-    red += ["", "Проверени без емисия: **%d** · с TDM резервация: **%d** · кандидати с пречка: **%d**"
-            % (sum(_bez_emisiya(z) for z in izvori), sum(_tdm(z) for z in izvori),
+    red += ["", "Проверени без емисия: **%d** · с TDM резервация: **%d** · защитени: **%d** · "
+            "кандидати с пречка: **%d**"
+            % (sum(_bez_emisiya(z) for z in izvori), sum(_tdm(z) for z in izvori), sum(zashtiten(z) for z in izvori),
                sum(1 for z in izvori if z["sastoyanie"] == rg.KANDIDAT and z.get("prechki"))), "",
-            "`validiran` значи само, че машината не е намерила пречка. Одобрява човек.", ""]
+            "`validiran` значи само, че машината не е намерила пречка. Одобрява човек. " + PRAVILO, ""]
     zagl = "| id | организация | вид | ешелон | " + " | ".join(PROVERKI[k] for k in KOLONI) + " | защо |"
-    for s in RED:
-        grupa = [z for z in izvori if z["sastoyanie"] == s]
+    for s in GRUPI:
+        grupa = [z for z in izvori if grupa_na(z) == s]
         if not grupa:
             continue
         red += ["## %s (%d)" % (ZAGLAVIYA[s], len(grupa)), "", zagl, "|" + "---|" * (len(KOLONI) + 5)]

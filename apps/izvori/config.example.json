@@ -32,6 +32,8 @@
      "meta": ["scholarly", "citation_title"]},
     {"vid": "pres", "ime": "прес-съобщение", "patishta": ["press", "newsroom", "press-release", "media-centre"],
      "meta": []},
+    {"vid": "politika", "ime": "политика / регулация",
+     "patishta": ["policies", "policy", "regulatory", "legislation"], "meta": []},
     {"vid": "promeni", "ime": "промени", "patishta": ["changelog", "release-notes", "releases", "whats-new"],
      "meta": []},
     {"vid": "status", "ime": "статус", "patishta": ["status", "incidents"], "meta": []},

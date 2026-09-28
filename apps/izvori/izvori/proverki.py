@@ -1,8 +1,9 @@
 """Седемте проверки при `validirai`. Всяка дава резултат „да“ / „не“ / „неясно“, бележка и какво е видяно.
 
-Проверките описват, не решават: `validiran` значи само, че машината не е намерила пречка. Пречка е само
-„не“ за официален домейн или за жив и HTTPS. Всичко останало (липсваща емисия, TDM резервация, неясен
-език или вид) се записва за човека, който одобрява.
+Проверките описват, не решават: `validiran` значи само, че машината не е намерила пречка. Пречка е
+„не“ за официален домейн или за жив и HTTPS — и **непрочетена страница** (защита 401/403, robots, 429 или
+друг код без тяло): каквото машината не е видяла, не е валидирано. Всичко останало (липсваща емисия, TDM
+резервация, неясен език или вид) се записва за човека, който одобрява.
 """
 import fnmatch
 import json
@@ -23,6 +24,8 @@ TIPOVE_EMISIYA = ("application/rss+xml", "application/atom+xml")
 KIRILICA = re.compile(r"[\u0400-\u04FF]")
 LATINICA = re.compile(r"[A-Za-z\u00C0-\u024F]")
 PRECHKI = ("domeyn", "zhiv")
+ZASHTITA = "защита — нужна ръчна проверка или друг канал"
+NEPROCHETENA = "страницата не е прочетена — нужна ръчна проверка или друг канал"
 
 
 def _r(rezultat, belezhka="", **kw):
@@ -383,6 +386,11 @@ def validirai(cfg, zapis, m):
     p["vid_sadarzhanie"] = vid_sadarzhanie(cfg, verigi)
     p["eshelon"] = eshelon(cfg, zapis, p["domeyn"])
     prechki = ["%s: %s" % (IMENA[k], p[k]["belezhka"]) for k in PRECHKI if p[k]["rezultat"] == NE]
+    kraen = verigi[-1]
+    if not kraen.ok and p["zhiv"]["rezultat"] != NE:
+        # каквото не е прочетено, не е валидирано: остава кандидат, дори домейнът да е потвърден
+        p["zhiv"]["neprochetena"] = True
+        prechki.append("%s: %s" % (IMENA["zhiv"], ZASHTITA if kraen.status in (401, 403) else NEPROCHETENA))
     return p, prechki
 
 
@@ -406,6 +414,9 @@ def sravni(predishni, novi):
         prichini.append("страницата връща %d" % st)
     elif novi.get("zhiv", {}).get("rezultat") == NE and predishni.get("zhiv", {}).get("rezultat") == DA:
         prichini.append("страницата вече не отговаря: %s" % novi["zhiv"]["belezhka"])
+    elif novi.get("zhiv", {}).get("neprochetena") and not predishni.get("zhiv", {}).get("neprochetena"):
+        prichini.append("страницата вече не се чете: %s — нужна ръчна проверка или друг канал"
+                        % novi["zhiv"]["belezhka"])
     pt = predishni.get("razresheniya", {}).get("tdm", {}).get("rezervirano")
     nt = novi.get("razresheniya", {}).get("tdm", {}).get("rezervirano")
     if nt and not pt:

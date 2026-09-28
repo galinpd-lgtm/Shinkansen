@@ -85,17 +85,33 @@ class TestProverki(unittest.TestCase):
             self.assertEqual(z["sastoyanie"], "validiran")  # записва се и се уважава, не е пречка
             self.assertEqual(z["proverki"]["vid_sadarzhanie"]["vid"], "dokumentaciya")
 
-    def test_403_e_zashtita_ne_greshka(self):
+    def test_403_e_zashtita_ostava_kandidat(self):
         with Papka() as p:
             i = p.dobavi("https://example.org/zashtiteno/", "regulator")
             p.hod("validirai")
             z = p.zapis(i)
+            self.assertEqual(_rez(z, "domeyn"), "да")  # домейнът е потвърден — и пак не стига
             self.assertEqual(_rez(z, "zhiv"), "неясно")
             self.assertIn("защита", z["proverki"]["zhiv"]["belezhka"])
-            self.assertEqual(z["prechki"], [])
+            self.assertEqual(z["sastoyanie"], "kandidat")
+            self.assertIn("защита — нужна ръчна проверка или друг канал", " ".join(z["prechki"]))
             self.assertEqual(_rez(z, "emisiya"), "неясно")
+            kod, _, err = p.hod("odobri", i, "--ot", "редактор")
+            self.assertEqual(kod, 1)
+            self.assertEqual(p.zapis(i)["sastoyanie"], "kandidat")
+            kod, out, _ = p.hod("otchet")
+            self.assertIn("## Защитени — чакат ръчна проверка (1)", out)
+            self.assertNotIn("## Кандидати", out)
             # след 403 не се пробват обичайните пътища — нищо не се заобикаля
             self.assertNotIn("https://example.org/feed", [u for u, _ in p.svyat.zayavki])
+
+    def test_politika(self):
+        st = stranici()
+        st["https://example.org/policies/ai-act"] = st["https://example.org/press/"]
+        with Papka(Svyat(st)) as p:
+            i = p.dobavi("https://example.org/policies/ai-act", "regulator")
+            p.hod("validirai")
+            self.assertEqual(p.zapis(i)["proverki"]["vid_sadarzhanie"]["vid"], "politika")
 
     def test_404_e_prechka(self):
         with Papka() as p:
@@ -123,6 +139,8 @@ class TestProverki(unittest.TestCase):
             self.assertEqual(_rez(z, "razresheniya"), "не")
             self.assertEqual(z["proverki"]["razresheniya"]["pravo"], "ne_se_izvlicha")
             self.assertEqual(_rez(z, "zhiv"), "неясно")
+            self.assertEqual(z["sastoyanie"], "kandidat")  # непрочетена страница не е валидирана
+            self.assertIn("нужна ръчна проверка", " ".join(z["prechki"]))
             self.assertNotIn("https://news.example.net/tech/", [u for u, _ in p.svyat.zayavki])
             self.assertEqual(z["eshelon"], "vtorichen")
 
@@ -270,6 +288,7 @@ class TestPovtorna(unittest.TestCase):
                 (lambda st: st.update({"https://example.com/blog/": (301, {"location": "https://example.net/drugade/"},
                                                                      b"")}), "нов домейн"),
                 (lambda st: st.pop("https://example.com/blog/"), "404"),
+                (lambda st: st.update({"https://example.com/blog/": (403, {}, b"")}), "вече не се чете"),
                 (lambda st: st.update({"https://example.com/.well-known/tdmrep.json":
                                        (200, {}, b'[{"location": "/blog/*", "tdm-reservation": 1}]')}),
                  "нова TDM забрана")):
