@@ -35,14 +35,17 @@ def zaredi(path=None):
     except (OSError, ValueError) as e:
         raise GreshkaConfig("не мога да прочета конфигурацията %s: %s" % (p, e))
     for k in ("roli_reshavashti", "maks_razmer_bytes", "maks_vreme_s", "vidove", "chist_tekst", "arhiv",
-              "izvan_obhvat", "opakovka", "dokazatelstvo", "zhiv", "html", "predlozheniya"):
+              "izvan_obhvat", "opakovka", "dokazatelstvo", "zhiv", "html", "predlozheniya", "belezhki"):
         if k not in cfg:
             raise GreshkaConfig("конфигурацията %s: липсва „%s“" % (p, k))
     if not cfg["roli_reshavashti"]:
         raise GreshkaConfig("roli_reshavashti: нужна е поне една роля")
-    for pr in PRISADI + ("pptx_pdf",):
-        if pr not in cfg["predlozheniya"]:
-            raise GreshkaConfig("predlozheniya: липсва „%s“" % pr)
+    for pr in PRISADI:  # само уведомяващите нямат предложение за действие — имат бележка
+        kade = "belezhki" if pr in SAMO_UVEDOMYAVAT else "predlozheniya"
+        if pr not in cfg[kade]:
+            raise GreshkaConfig("%s: липсва „%s“" % (kade, pr))
+    if "kandidat_pdf" not in cfg["belezhki"]:
+        raise GreshkaConfig("belezhki: липсва „kandidat_pdf“")
     for vid in cfg["vidove"]:
         if vid not in CHETIMI:
             raise GreshkaConfig("vidove: „%s“ — двигателят чете само %s" % (vid, ", ".join(CHETIMI)))

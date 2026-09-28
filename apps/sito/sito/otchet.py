@@ -67,6 +67,12 @@ def md(k):
         for z in b["_spreni"]:
             out.append("- `%s` %s%s" % (z["id"], z["put"], (" — " + z["spryan"]["prichina"]) if z.get("spryan")
                                         else ""))
+    pp = [z for z in fl if z["vid"] == "pptx"]
+    if pp:
+        izbrani = [z for z in pp if (z.get("kandidat_pdf") or {}).get("sha256") == z["sha256"]]
+        out += ["", "PPTX: %d (%s) · избрани от човек за PDF (Canva): %d (%s)" % (
+            len(pp), chovesko(sum(z["razmer"] for z in pp)), len(izbrani),
+            chovesko(sum(z["razmer"] for z in izbrani)))]
     out += ["", "## След", ""]
     if not pr:
         out.append("- Нищо не е преобразувано. Следва: `vidyah`, `reshi` и `preobrazuvay --go`.")

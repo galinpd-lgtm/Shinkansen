@@ -67,13 +67,27 @@ def vidyan_tekst(z):
     return "видян (%s, %s)" % (v["rolya"], v["t"])
 
 
+def pptx(k):
+    """Всички PPTX по реда на пътя — без подреждане по размер и без предложение. Избира човекът."""
+    return sorted((z for z in k["faylove"] if z["vid"] == "pptx"), key=lambda z: z["put"])
+
+
+def kandidat_tekst(z):
+    c = z.get("kandidat_pdf")
+    if not c:
+        return "—"
+    if c.get("sha256") != z["sha256"]:
+        return "отметката е за друга версия на файла"
+    return "кандидат за PDF (Canva) — избран от %s, %s" % (c["rolya"], c["t"])
+
+
 def klasove(k, fl=None):
     """Обобщение по клас: брой, размер, очакван MD, колко са решени да/не и колко са видени."""
     po = {}
     for z in (rabotni(k) if fl is None else fl):
         c = po.setdefault(z["klas"], {"klas": z["klas"], "prisada": z["prisada"], "broy": 0, "razmer": 0,
                                       "ochakvan": 0, "neizvesten": 0, "da": 0, "ne": 0, "videni": 0,
-                                      "predlozhenie": z["predlozhenie"].split(" · ")[0]})
+                                      "predlozhenie": z["predlozhenie"].split(" · ")[0] or z["prichina"]})
         c["broy"] += 1
         c["razmer"] += z.get("razmer") or 0
         if z["prisada"] in ("dublikat",) + SAMO_UVEDOMYAVAT:
@@ -134,12 +148,21 @@ def md(k):
             z["id"], _md_kl(z["put"]), z["vid"], chovesko(z.get("razmer")), IMENA.get(z["prisada"], z["prisada"]),
             _md_kl(prichina), chovesko(z.get("ochakvan_md_bytes")), _md_kl(belezhka), vidyan_tekst(z),
             _reshenie(z)))
+    pp = pptx(k)
+    if pp:
+        out += ["", "## PPTX → PDF (Canva): избира само човекът", "",
+                "Сито не предлага и не подрежда кандидати. Отметка: "
+                "`kandidat-pdf karta.json <id> … --ot <роля>`. Преобразуването е ръчна стъпка извън Сито.", "",
+                "| id | Път | Размер | Преглед | Отметка |", "|---|---|---:|---|---|"]
+        for z in pp:
+            out.append("| `%s` | %s | %s | %s | %s |" % (z["id"], _md_kl(z["put"]), chovesko(z["razmer"]),
+                                                          vidyan_tekst(z), kandidat_tekst(z)))
     out += ["", "## Не се работи от Сито", ""]
     uv = klasove(k, uvedomitelni(k))
     if not uv:
         out.append("Няма.")
     else:
-        out += ["| Присъда | Вид | Брой | Размер | Какво да се направи |", "|---|---|---:|---:|---|"]
+        out += ["| Присъда | Вид | Брой | Размер | Бележка |", "|---|---|---:|---:|---|"]
         for c in uv:
             out.append("| %s | %s | %d | %s | %s |" % (IMENA[c["prisada"]], c["klas"].split(":", 1)[1], c["broy"],
                                                    chovesko(c["razmer"]), c["predlozhenie"]))
@@ -155,7 +178,7 @@ def csv_(k):
     w = csv.writer(b)
     w.writerow(["id", "put", "vid", "razmer", "sha256", "prisada", "klas", "prichina", "predlozhenie",
                 "ochakvan_md_bytes", "belezhka", "proveri", "dublikat_na", "vidyan", "vidyan_ot", "reshenie",
-                "rolya", "md_bytes"])
+                "rolya", "md_bytes", "kandidat_pdf"])
     for z in k["faylove"]:
         r = z.get("reshenie") or {}
         v = z.get("vidyan") or {}
@@ -165,7 +188,8 @@ def csv_(k):
                     z.get("proveri") or "", z.get("dublikat_na") or "",
                     "да" if v.get("sha256") == z["sha256"] else "не", v.get("rolya", ""),
                     ("да" if r.get("da") else "не") if r else "", r.get("rolya", ""),
-                    (z.get("preobrazuvan") or {}).get("md_bytes", "")])
+                    (z.get("preobrazuvan") or {}).get("md_bytes", ""),
+                    "да" if (z.get("kandidat_pdf") or {}).get("sha256") == z["sha256"] else ""])
     return b.getvalue()
 
 
@@ -229,13 +253,25 @@ def html_(k):
                      "".join("<br><small>%s</small>" % e(b) for b in belezhki), otkas,
                      e(z["vid"]), chovesko(z.get("razmer")), e(IMENA.get(z["prisada"], z["prisada"])),
                      e(z["prichina"]), chovesko(z.get("ochakvan_md_bytes")), klas_v, e(vt), klas_r, e(_reshenie(z))))
-    r.append("</table></div><h2>Не се работи от Сито</h2>")
+    r.append("</table></div>")
+    pp = pptx(k)
+    if pp:
+        r.append("<h2>PPTX → PDF (Canva): избира само човекът</h2><p class=m>Сито не предлага и не подрежда "
+                 "кандидати. Отметка: <code>kandidat-pdf karta.json &lt;id&gt; … --ot &lt;роля&gt;</code>. "
+                 "Преобразуването е ръчна стъпка извън Сито.</p><div class=\"w\"><table><tr><th>id</th><th>Път</th>"
+                 "<th>Размер</th><th>Преглед</th><th>Отметка</th></tr>")
+        for z in pp:
+            r.append("<tr><td><code>%s</code></td><td><a href=\"%s\">%s</a></td><td class=n>%s</td><td>%s</td>"
+                     "<td>%s</td></tr>" % (e(z["id"]), e(_vrazka(k, z)), e(z["put"]), chovesko(z["razmer"]),
+                                           e(vidyan_tekst(z)), e(kandidat_tekst(z))))
+        r.append("</table></div>")
+    r.append("<h2>Не се работи от Сито</h2>")
     uv = klasove(k, uvedomitelni(k))
     if not uv:
         r.append("<p>Няма.</p>")
     else:
         r.append("<div class=\"w\"><table><tr><th>Присъда</th><th>Вид</th><th>Брой</th><th>Размер</th>"
-                 "<th>Какво да се направи</th></tr>")
+                 "<th>Бележка</th></tr>")
         for c in uv:
             r.append("<tr><td>%s</td><td>%s</td><td class=n>%d</td><td class=n>%s</td><td>%s</td></tr>" % (
                 e(IMENA[c["prisada"]]), e(c["klas"].split(":", 1)[1]), c["broy"], chovesko(c["razmer"]),
