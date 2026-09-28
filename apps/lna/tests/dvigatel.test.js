@@ -41,9 +41,23 @@ describe('профилът', () => {
     const neopr = r.profil.osi['7'].vaprosi.filter((v) => v.otgovor === 'не може да се определи без модел');
     expect(neopr.map((v) => v.kluch)).toEqual(['drugata_strana', 'znachenie']);
   });
-  test('източникът е домейнът на страницата', () => {
+  test('източникът е домейнът на страницата, но ос 1 е неутрална — няма регистър в браузъра', () => {
     expect(r.iztochnik.domain).toBe('example.org');
-    expect(r.profil.osi['1'].zashto).toContain('Примерен вестник');
+    expect(r.profil.osi['1'].ocenka).toBe(5.0);
+    expect(r.profil.osi['1'].zashto).toBe('Няма данни — неутрално.');
+  });
+
+  test('ос 1 е 5.0 за всеки сайт', () => {
+    for (const url of ['https://www.example.org/a', 'https://example.net/b', 'https://nyakoy.example.com/', null]) {
+      const o1 = D.ocenka(s.tekst, url).profil.osi['1'];
+      expect([url, o1.ocenka, o1.zashto]).toEqual([url, 5.0, 'Няма данни — неутрално.']);
+    }
+  });
+
+  test('в правилата няма регистър на източниците', () => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'pravila.js'), 'utf8');
+    expect(src).not.toMatch(/registar|rep_score|Примерен вестник/);
+    expect(P.reputaciya_v_brauzara).toEqual({ ocenka: 5.0, zashto: 'Няма данни — неутрално.' });
   });
 });
 

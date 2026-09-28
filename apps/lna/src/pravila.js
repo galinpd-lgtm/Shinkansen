@@ -362,19 +362,10 @@
         "vapros": "Какво значи това за читателя?"
       }
     ],
-    "rep_neizvesten": 5.0,
-    "registar_iztochnici": [
-      {
-        "domain": "example.org",
-        "ime": "Примерен вестник",
-        "rep_score": 7.5
-      },
-      {
-        "domain": "example.net",
-        "ime": "Примерен портал",
-        "rep_score": 4.0
-      }
-    ],
+    "reputaciya_v_brauzara": {
+      "ocenka": 5.0,
+      "zashto": "Няма данни — неутрално."
+    },
     "otgovori": {
       "DA": "да",
       "CHASTICHNO": "частично",
