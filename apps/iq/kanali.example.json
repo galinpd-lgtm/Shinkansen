@@ -1,0 +1,9 @@
+[
+  {"id": "primeren-vestnik", "ime": "Примерен вестник", "url": "https://example.org/", "vid": "medija",
+   "saglasie": true, "saglasie_data": "2026-09-20"},
+  {"id": "primeren-byuletin", "ime": "Примерен бюлетин", "url": "https://example.org/byuletin/", "vid": "byuletin",
+   "saglasie": false},
+  {"id": "primeren-sayt", "ime": "Примерен сайт", "url": "https://example.net/", "vid": "sayt",
+   "spryana": {"osnovanie": "Пример: писмено решение по жалба, номер и дата на решението.", "rolya": "редакционен съвет",
+               "data": "2026-09-15"}}
+]
