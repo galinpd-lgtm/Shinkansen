@@ -1,4 +1,4 @@
-"""python -m sito skanirai | karta | vidyah | reshi | preobrazuvay | otchet
+"""python -m sito skanirai | karta | vidyah | reshi | kandidat-pdf | preobrazuvay | otchet
 
 Кодове на изход:
   0 готово (и когато файл е „неясно“ — то е записано, не е грешка на програмата)
@@ -74,6 +74,12 @@ def parser():
     dane.add_argument("--da", action="store_true")
     dane.add_argument("--ne", action="store_true")
     r.add_argument("--ot", help="ролята (не името) на човека, който решава")
+    c = sub.add_parser("kandidat-pdf", parents=[obshti],
+                       help="PPTX, избран от човек за PDF през Canva (ръчна стъпка извън Сито) — само по id")
+    c.add_argument("karta")
+    c.add_argument("idta", nargs="+", metavar="id", help="един или повече id на PPTX (и със запетаи)")
+    c.add_argument("--ot", help="ролята (не името) на човека, който избира")
+    c.add_argument("--mahni", action="store_true", help="махни отметката")
     pr = sub.add_parser("preobrazuvay", parents=[obshti], help="без --go само планът; с --go пише MD + chunks")
     pr.add_argument("karta")
     pr.add_argument("--izhod", required=True, help="папката за MD и chunks.jsonl")
@@ -168,14 +174,9 @@ def vidyah(a, cfg, sega):
     """Прегледът е на човек и е за конкретен файл: роля, време и SHA-256 на видяното. Никога партидно."""
     rolya = _rolya(cfg, a.ot)
     k = karta.zaredi(a.karta)
-    po_id = {z["id"]: z for z in k["faylove"]}
-    idta = [i for x in a.idta for i in x.split(",") if i.strip()]
-    lipsvat = [i for i in idta if i not in po_id]
-    if lipsvat:
-        raise Greshka("няма такива id в картата: %s — нищо не е записано" % ", ".join(lipsvat))
+    izbrani = _idta(a, k)
     t, n = _t(sega), 0
-    for i in dict.fromkeys(idta):
-        z = po_id[i]
+    for z in izbrani:
         if z["prisada"] in preobrazuvay.NEPREOBRAZUVAEMI:
             print("  %s: %s — няма какво да се прегледа за действие" % (z["put"], z["prisada"]))
             continue
@@ -192,8 +193,33 @@ def vidyah(a, cfg, sega):
         n += 1
         print("  %s: видян от %s" % (z["put"], rolya))
     karta.zapishi(a.karta, k)
-    print("Видени %d от %d" % (n, len(idta)))
+    print("Видени %d от %d" % (n, len(izbrani)))
     return "vidyah %d" % n
+
+
+def _idta(a, k):
+    po_id = {z["id"]: z for z in k["faylove"]}
+    idta = list(dict.fromkeys(i for x in a.idta for i in x.split(",") if i.strip()))
+    lipsvat = [i for i in idta if i not in po_id]
+    if lipsvat:
+        raise Greshka("няма такива id в картата: %s — нищо не е записано" % ", ".join(lipsvat))
+    return [po_id[i] for i in idta]
+
+
+def kandidat_pdf(a, cfg, sega):
+    """Кои PPTX да минат през Canva избира само човекът, по номер. Сито не предлага и не подрежда кандидати."""
+    rolya = _rolya(cfg, a.ot)
+    k = karta.zaredi(a.karta)
+    t, n = _t(sega), 0
+    for z in _idta(a, k):
+        if z["vid"] != "pptx":
+            print("  %s: не е PPTX — не е отбелязан" % z["put"])
+            continue
+        z["kandidat_pdf"] = None if a.mahni else {"rolya": rolya, "t": t, "sha256": z["sha256"]}
+        n += 1
+        print("  %s: %s (%s)" % (z["put"], "без отметка" if a.mahni else "кандидат за PDF (Canva)", rolya))
+    karta.zapishi(a.karta, k)
+    return "kandidat-pdf %s %d" % ("mahni" if a.mahni else "da", n)
 
 
 def reshi(a, cfg, sega):
@@ -234,6 +260,8 @@ def izpalni(a):
         return reshi(a, cfg, sega)
     if a.komanda == "vidyah":
         return vidyah(a, cfg, sega)
+    if a.komanda == "kandidat-pdf":
+        return kandidat_pdf(a, cfg, sega)
     k = karta.zaredi(a.karta)
     if a.komanda == "karta":
         tekst = {"md": karta.md, "html": karta.html_, "csv": karta.csv_}[a.format](k)

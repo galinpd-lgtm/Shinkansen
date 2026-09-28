@@ -54,11 +54,12 @@ def e_zhiv(cfg, put, promenen_ts, sega):
 
 
 def uvedomi(cfg, z, kategoriya, belezhka=None):
-    """Присъда само за уведомяване: извън обхвата, чист текст, архив."""
-    prichina = {"izvan_obhvat": "вид „%s“ не е в обхвата на Сито" % z["vid"],
-                "chist_tekst": "вече е текст",
+    """Присъда само за уведомяване: извън обхвата, чист текст, архив. Без предложение за действие — само бележка."""
+    prichina = {"izvan_obhvat": "вид „%s“" % z["vid"],
+                "chist_tekst": "TXT/MD",
                 "arhiv": "архив — не се отваря и не се чете отвътре"}[kategoriya]
-    z.update(prisada=kategoriya, prichina=prichina, predlozhenie=cfg["predlozheniya"][kategoriya],
+    prichina += "; " + cfg["belezhki"][kategoriya]
+    z.update(prisada=kategoriya, prichina=prichina, predlozhenie="",
              klas="%s:%s" % (kategoriya, z["vid"]), problem=None, signali=[], belezhka=belezhka)
 
 
@@ -101,8 +102,6 @@ def reshi(cfg, z, silni, dumi, problem, info, promenen_ts, sega, instr):
         predl += " · MD не може: " + problem
     if pr == "opakovka" and z["razmer"] and z.get("ochakvan_md_bytes"):
         predl += " · очаквано %s → %s" % (chovesko(z["razmer"]), chovesko(z["ochakvan_md_bytes"]))
-    if vid == "pptx":
-        predl += " · %s, %s" % (cfg["predlozheniya"]["pptx_pdf"], chovesko(z["razmer"]))
     z.update(prisada=pr, prichina=prichina, predlozhenie=predl, klas="%s:%s" % (pr, vid),
              problem=problem, signali=silni + ["дума: " + d for d in dumi], belezhka=belezhka)
 

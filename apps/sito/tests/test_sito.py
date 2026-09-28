@@ -73,6 +73,7 @@ class TestObhvatIPrisadi(unittest.TestCase):
                          ("zapis.mp3", "audio"), ("neshto.xyz", "?")):
             z = self.z[put]
             self.assertEqual(z["prisada"], "izvan_obhvat", put)
+            self.assertEqual(z["predlozhenie"], "", put)
             self.assertEqual(z["vid"], vid, put)
             self.assertIsNotNone(z["sha256"])
         # JSON с „договор“ и ЕИК вътре не се чете: нито присъда, нито бележка
@@ -81,7 +82,8 @@ class TestObhvatIPrisadi(unittest.TestCase):
     def test_chist_tekst(self):
         for put in ("belezhka.md", "spisak.txt"):
             self.assertEqual(self.z[put]["prisada"], "chist_tekst", put)
-            self.assertEqual(self.z[put]["predlozhenie"], CFG["predlozheniya"]["chist_tekst"])
+            self.assertEqual(self.z[put]["predlozhenie"], "")
+            self.assertIn(CFG["belezhki"]["chist_tekst"], self.z[put]["prichina"])
 
     def test_md_s_dogovor_e_samo_belezhka(self):
         z = self.z["belezhka.md"]
@@ -94,7 +96,8 @@ class TestObhvatIPrisadi(unittest.TestCase):
         for put in ("sabrano/arhiv.zip", "sabrano/stari.7z"):
             z = self.z[put]
             self.assertEqual(z["prisada"], "arhiv", put)
-            self.assertIn("разархивирай", z["predlozhenie"])
+            self.assertEqual(z["predlozhenie"], "")  # само уведомява: без предложение за действие
+            self.assertIn("разархивирай", z["prichina"])
             self.assertEqual(len(z["sha256"]), 64)
         self.assertFalse([p for p in self.z if "!/" in p or "v_arhiv" in p])
 
@@ -110,10 +113,13 @@ class TestObhvatIPrisadi(unittest.TestCase):
         self.assertEqual(z["prisada"], "neyasno")
         self.assertIn("antiword", z["prichina"])
 
-    def test_pptx_kandidat_za_pdf(self):
+    def test_pptx_ne_e_kandidat_sam(self):
+        """Сито не предлага кандидати за PDF — отметката е само по избор на човек."""
         z = self.z["prezentaciya.pptx"]
         self.assertEqual(z["prisada"], "opakovka")
-        self.assertIn("кандидат за PDF (Canva)", z["predlozhenie"])
+        self.assertIsNone(z["kandidat_pdf"])
+        for k in ("predlozhenie", "prichina", "belezhka"):
+            self.assertNotIn("Canva", z[k] or "", k)
 
     def test_zhiv_po_pat(self):
         self.assertEqual(self.z["rabotni/plan.docx"]["prisada"], "zhiv")
@@ -234,6 +240,44 @@ class TestPregled(unittest.TestCase):
             z = p.po_put("golyam.html")
             self.assertEqual(z["vidyan"]["rolya"], ROLYA)
             self.assertTrue(z["reshenie"]["da"])
+
+
+@BEZ_INSTRUMENTI
+@BEZ_DNEVNIK
+class TestKandidatPdf(unittest.TestCase):
+    def test_samo_chovek_po_id(self):
+        with Papka() as p:
+            p.skanirai()
+            z = p.po_put("prezentaciya.pptx")
+            predi = baytove(p.karta)
+            self.assertEqual(p.hod("kandidat-pdf", p.karta, z["id"])[0], 2)
+            self.assertEqual(p.hod("kandidat-pdf", p.karta, z["id"], "--ot", "Иван Иванов")[0], 2)
+            self.assertEqual(p.hod("kandidat-pdf", p.karta, z["id"], "nyama", "--ot", ROLYA)[0], 1)
+            self.assertEqual(predi, baytove(p.karta))
+            # решение по клас не слага отметка
+            p.hod("reshi", p.karta, "--klas", "opakovka", "--da", "--ot", ROLYA)
+            self.assertIsNone(p.po_put("prezentaciya.pptx")["kandidat_pdf"])
+            kod, out, _ = p.hod("kandidat-pdf", p.karta, z["id"], p.po_put("golyam.html")["id"], "--ot", ROLYA)
+            self.assertEqual(kod, 0)
+            self.assertIn("не е PPTX", out)
+            self.assertIsNone(p.po_put("golyam.html")["kandidat_pdf"])
+            c = p.po_put("prezentaciya.pptx")["kandidat_pdf"]
+            self.assertEqual((c["rolya"], c["sha256"]), (ROLYA, z["sha256"]))
+            md = p.hod("karta", p.karta)[1]
+            self.assertIn("## PPTX → PDF (Canva): избира само човекът", md)
+            self.assertIn("| `%s` | prezentaciya.pptx | 601.6 KB |" % z["id"], md)
+            self.assertIn("кандидат за PDF (Canva) — избран от " + ROLYA, md)
+            self.assertIn("избрани от човек за PDF (Canva): 1", p.hod("otchet", p.karta)[1])
+            self.assertEqual(p.hod("kandidat-pdf", p.karta, z["id"], "--ot", ROLYA, "--mahni")[0], 0)
+            self.assertIsNone(p.po_put("prezentaciya.pptx")["kandidat_pdf"])
+
+    def test_bez_otmetka_nyama_kandidati(self):
+        with Papka() as p:
+            p.skanirai()
+            md = p.hod("karta", p.karta)[1]
+            razdel = md.split("## PPTX → PDF (Canva)")[1].split("## Не се работи")[0]
+            self.assertIn("prezentaciya.pptx", razdel)
+            self.assertNotIn("кандидат за PDF (Canva) —", razdel)
 
 
 @BEZ_INSTRUMENTI
@@ -438,6 +482,8 @@ class TestKartaIOtchet(unittest.TestCase):
             self.assertIn("| архив | arhiv | 2 |", uved)
             self.assertIn("| чист текст | tekst | 2 |", uved)
             self.assertIn("belezhka.md — споменава", uved)
+            self.assertNotIn("spisak.txt —", uved)  # бележка само където има какво да се спомене
+            self.assertIn("разархивирай първо", uved)
             self.assertIn("невидян", glaven)
             kod, out, _ = p.hod("karta", p.karta, "--format", "html")
             self.assertTrue(out.startswith("<!doctype html>"))

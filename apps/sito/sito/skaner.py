@@ -89,7 +89,8 @@ class Skaner:
         sha, bayt = hash_i_baytove(pat, vid, cfg)
         z = {"id": fid(put), "put": put, "vid": vid, "razmer": razmer, "sha256": sha, "promenen": promenen,
              "tekst_bytes": 0, "ochakvan_md_bytes": None, "otkas": None, "proveri": None, "dublikat_na": None,
-             "belezhka": None, "reshenie": None, "vidyan": None, "preobrazuvan": None, "spryan": None}
+             "belezhka": None, "reshenie": None, "vidyan": None, "preobrazuvan": None, "spryan": None,
+             "kandidat_pdf": None}
         self.zapisi.append(z)
 
         if kategoriya in cf.SAMO_UVEDOMYAVAT:
@@ -136,7 +137,6 @@ class Skaner:
         prisadi.reshi(cfg, z, silni, dumi, problem, info, promenen_ts, self.sega, self.instr)
 
 
-PRENASYANI = ("reshenie", "vidyan", "preobrazuvan", "spryan")
 
 
 def prenesi(stara, nova):
@@ -151,7 +151,7 @@ def prenesi(stara, nova):
         if not s or z["prisada"] in cf.SAMO_UVEDOMYAVAT:
             continue
         if s.get("sha256") == z["sha256"]:
-            for k in ("reshenie", "preobrazuvan"):
+            for k in ("reshenie", "preobrazuvan", "kandidat_pdf"):
                 z[k] = s.get(k)
         elif s.get("reshenie"):
             z["reshenie"] = s["reshenie"]
