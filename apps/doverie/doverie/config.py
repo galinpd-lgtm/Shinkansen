@@ -50,9 +50,12 @@ def proveri(cfg):
             greshki.append("липсва тегло за „%s“" % k)
     if not greshki and abs(sum(tegla[k] for k in OSI_KLUCHOVE) - 1.0) > 0.001:
         greshki.append("теглата не дават сума 1.0")
-    for k in ("po_dumi", "reshenie", "originalnost"):
+    for k in ("po_dumi", "reshenie", "originalnost", "palnota_vaprosi", "uverenost"):
         if k not in cfg:
             greshki.append("липсва „%s“" % k)
+    for i, v in enumerate(cfg.get("palnota_vaprosi") or []):
+        if not (isinstance(v, dict) and v.get("kluch") and v.get("vapros")):
+            greshki.append("въпрос %d за пълнота: трябват „kluch“ и „vapros“" % (i + 1))
     if "11434" in str(cfg.get("ollama_url", "")):
         greshki.append("ollama_url сочи :11434 (продукционния Ollama) — ползвай тестовия :11435")
     return greshki

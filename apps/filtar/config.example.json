@@ -1,0 +1,62 @@
+{
+  "papka_danni": "danni",
+  "izvori": "izvori.example.json",
+  "organizacii": "organizacii.example.json",
+  "vhod": "vhod",
+  "doverie_config": null,
+  "user_agent": "KAGAMI-filtar/0.1 (+https://kagami.bg/radar/)",
+  "taymaut_s": 30,
+  "fetch_interval_min": 15,
+  "ne_otgovarya_sled_dni": 3,
+  "sloy1": {"min_znaci": 100, "tipove": ["xml", "rss", "atom", "html", "ruchno"]},
+  "sloy2": {"prag_pochti": 0.95, "dni": 30},
+  "sloy3": {
+    "min_dumi": 100,
+    "min_dumi_oficialen": 30,
+    "vidove_oficialni": ["oficialen", "dokumentaciya"],
+    "min_kirilica_bg": 0.5,
+    "platena_stena": ["само за абонати", "абонирайте се, за да прочетете", "за да прочетете цялата статия",
+                      "subscribe to continue", "subscribers only", "to continue reading"],
+    "reklama": ["спонсорирано", "платена публикация", "рекламен материал", "партньорски материал",
+                "промоционален код", "sponsored content", "advertorial"],
+    "vreden": {
+      "rezhim": "izklyuchen",
+      "model": "nemotron-safety",
+      "lokalen_url": "http://127.0.0.1:11435",
+      "oblachen_url": "",
+      "kluch": "",
+      "dnevna_granica": 100
+    }
+  },
+  "sloy4": {"barz_prag": 3.0},
+  "sloy5": {"karantina_pod": 3.0, "nachalna": 5.0, "dni": 30, "posledni_dni": 7, "teglo_posledni": 2,
+            "preizchisli_sled_dni": 7},
+  "rubriki": [
+    {"nomer": 1, "ime": "AI модели и инструменти",
+     "dumi": ["изкуствен интелект", "езиков модел", "езикови модели", "нов модел", "модела", "LLM", "AI", "API",
+              "токени", "language model", "model release"]},
+    {"nomer": 2, "ime": "2D/3D софтуер",
+     "dumi": ["3D", "2D", "рендер", "моделиране", "анимация", "бележки към версията", "нова версия", "release notes",
+              "графичен редактор"]},
+    {"nomer": 3, "ime": "Безплатни полезни обучения",
+     "dumi": ["безплатно обучение", "безплатен курс", "обучение", "курс", "уебинар", "записване", "сертификат"]},
+    {"nomer": 4, "ime": "EU финансиране и срокове",
+     "dumi": ["финансиране", "покана", "срок за кандидатстване", "кандидатстване", "грант", "европейски фонд",
+              "програма на ЕС", "безвъзмездна помощ"]},
+    {"nomer": 5, "ime": "Регулации: AI Act, NIS2, GDPR",
+     "dumi": ["AI Act", "NIS2", "GDPR", "регламент", "директива", "лични данни", "киберсигурност", "надзорен орган"]},
+    {"nomer": 6, "ime": "Варна и България",
+     "dumi": ["Варна", "варненски", "България", "български", "българска", "община", "общински"]}
+  ],
+  "izdanie": {
+    "maks_na_den": 10,
+    "maks_na_rubrika": 3,
+    "maks_na_izvor": 3,
+    "okno_dni": 2,
+    "radar_dni": 30,
+    "publichni_osi": false,
+    "zaglavie": "Радар — KAGAMI",
+    "link": "https://kagami.bg/radar/",
+    "opisanie": "До 10 новини на ден за българска фирма: AI, софтуер, обучения, EU финансиране, регулации, Варна и България."
+  }
+}

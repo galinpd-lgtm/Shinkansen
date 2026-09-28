@@ -3,24 +3,45 @@
   "gate_url": "http://127.0.0.1:9109/vrata",
   "taymaut_s": 120,
   "model": {
-    "pisach":   {"ime": "gemma4:26b",  "think": "low"},
-    "struktura": {"ime": "gpt-oss:20b", "think": "low"}
+    "pisach": {
+      "ime": "gemma4:26b",
+      "think": "low"
+    },
+    "struktura": {
+      "ime": "gpt-oss:20b",
+      "think": "low"
+    }
   },
   "tegla": {
     "reputaciya": 0.15,
-    "proverimost": 0.20,
+    "proverimost": 0.2,
     "prozrachnost": 0.15,
-    "originalnost": 0.10,
+    "originalnost": 0.1,
     "obshtestven_interes": 0.15,
     "manipulaciya": 0.15,
-    "palnota": 0.10
+    "palnota": 0.1
   },
   "po_dumi": [
-    [8.5, "Много добра"],
-    [7.0, "Добра"],
-    [5.0, "Средна"],
-    [3.0, "Ниска"],
-    [0.0, "Много ниска"]
+    [
+      8.5,
+      "Много добра"
+    ],
+    [
+      7.0,
+      "Добра"
+    ],
+    [
+      5.0,
+      "Средна"
+    ],
+    [
+      3.0,
+      "Ниска"
+    ],
+    [
+      0.0,
+      "Много ниска"
+    ]
   ],
   "reshenie": {
     "propusni_ot": 7.0,
@@ -29,11 +50,78 @@
     "ai_flag_ot": 0.5,
     "bez_iztochnici_do": 2.0
   },
-  "originalnost": {"prag": 0.92, "shingal": 5},
+  "originalnost": {
+    "prag": 0.92,
+    "shingal": 5
+  },
   "pamet": null,
   "rep_neizvesten": 5.0,
   "registar_iztochnici": [
-    {"domain": "example.org", "ime": "Примерен вестник", "rep_score": 7.5},
-    {"domain": "example.net", "ime": "Примерен портал", "rep_score": 4.0}
+    {
+      "domain": "example.org",
+      "ime": "Примерен вестник",
+      "rep_score": 7.5
+    },
+    {
+      "domain": "example.net",
+      "ime": "Примерен портал",
+      "rep_score": 4.0
+    }
+  ],
+  "palnota_vaprosi": [
+    {
+      "kluch": "koy",
+      "vapros": "Кой?"
+    },
+    {
+      "kluch": "kakvo",
+      "vapros": "Какво?"
+    },
+    {
+      "kluch": "koga",
+      "vapros": "Кога?"
+    },
+    {
+      "kluch": "kade",
+      "vapros": "Къде?"
+    },
+    {
+      "kluch": "zashto",
+      "vapros": "Защо?"
+    },
+    {
+      "kluch": "kak",
+      "vapros": "Как?"
+    },
+    {
+      "kluch": "kolko",
+      "vapros": "Колко — има ли числа и спрямо какво?"
+    },
+    {
+      "kluch": "koy_kazva",
+      "vapros": "Кой го казва и откъде знае?"
+    },
+    {
+      "kluch": "drugata_strana",
+      "vapros": "Чута ли е другата страна?"
+    },
+    {
+      "kluch": "znachenie",
+      "vapros": "Какво значи това за читателя?"
+    }
+  ],
+  "uverenost": {
+    "niska_pod_dumi": 150,
+    "niska_pod_tvardeniya": 3,
+    "niska_razlika_nad": 2,
+    "visoka_ot_dumi": 300,
+    "visoka_ot_pokritie": 0.6,
+    "visoka_razlika_do": 1
+  },
+  "arhiv": null,
+  "filtar_baza": null,
+  "proverka_roli": [
+    "методист",
+    "редактор"
   ]
 }

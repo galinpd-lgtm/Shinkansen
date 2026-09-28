@@ -1,0 +1,331 @@
+"""Слой 7, черновата, одобрението и изданието — и правилото за авторското право."""
+import json
+import os
+import unittest
+import xml.etree.ElementTree as ET
+from datetime import date, timedelta
+
+from obshto import IZVORI, SEGA, FalshivaMrezha, FalshivModel, Otvorena, Papka, cfg, dcfg
+
+from filtar import config, sabirach, sloeve
+from filtar import izdanie as izd
+from filtar.dov import VrataNeBezopasno, izrecheniya
+
+DEN = date(2026, 10, 5)
+
+
+def podgotvi(p):
+    sabirach.sabiray(p.b, cfg(), IZVORI, SEGA, get=FalshivaMrezha(), vhod=p.vhod)
+    sloeve.filtriray(p.b, cfg(), dcfg(), SEGA, organizacii=config.cheti_json("organizacii.example.json"))
+
+
+class TestChernova(unittest.TestCase):
+    def test_gotovo_1(self):
+        """Готово е, когато: 1. 3 емисии → ≤10 записа и причина в дневника за всеки отпаднал."""
+        with Papka() as p:
+            podgotvi(p)
+            d, pj = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            self.assertTrue(os.path.exists(pj))
+            self.assertTrue(os.path.exists(pj.replace(".json", ".md")))
+            self.assertGreater(len(d["zapisi"]), 0)
+            self.assertLessEqual(len(d["zapisi"]), 10)
+            izbrani = {z["id"] for z in d["zapisi"]}
+            for z in p.b.execute("SELECT id FROM zapisi"):
+                if z["id"] in izbrani:
+                    continue
+                red = p.b.execute("SELECT prichina FROM firewall_log WHERE zapis_id=? AND sloy>0 AND reshenie NOT IN "
+                                  "('ПРОПУСНИ', 'ПРЕДУПРЕДИ')", (z["id"],)).fetchone()
+                if red is None:  # премина слоевете 1–6, но не е подбран → ред на слой 7
+                    red = p.b.execute("SELECT prichina FROM firewall_log WHERE zapis_id=? AND sloy=7",
+                                      (z["id"],)).fetchone()
+                self.assertIsNotNone(red, "запис %d няма причина" % z["id"])
+
+    def test_pravila_na_podbora(self):
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            ic = cfg()["izdanie"]
+            po_rub, po_izv = {}, {}
+            for z in d["zapisi"]:
+                self.assertIn(z["reshenie"], ("ПРОПУСНИ", "ПРЕДУПРЕДИ"))
+                self.assertTrue(z["izvor"]["ime"] and z["data"] and z["rubrika"]["nomer"])
+                po_rub[z["rubrika"]["nomer"]] = po_rub.get(z["rubrika"]["nomer"], 0) + 1
+                po_izv[z["izvor"]["ime"]] = po_izv.get(z["izvor"]["ime"], 0) + 1
+            self.assertLessEqual(max(po_rub.values()), ic["maks_na_rubrika"])
+            self.assertLessEqual(max(po_izv.values()), ic["maks_na_izvor"])
+            # без дата не се публикува (записът без дата в примерите е ПРЕДУПРЕДИ — правим го ПРОПУСНИ за проверката)
+            bez = p.b.execute("SELECT id FROM zapisi WHERE data IS NULL AND reshenie IN ('ПРОПУСНИ','ПРЕДУПРЕДИ')").fetchone()
+            p.b.execute("UPDATE zapisi SET reshenie='ПРОПУСНИ' WHERE id=?", (bez["id"],))
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            self.assertNotIn(bez["id"], {z["id"] for z in d["zapisi"]})
+            red = p.b.execute("SELECT prichina FROM firewall_log WHERE zapis_id=? AND sloy=7 ORDER BY id DESC",
+                              (bez["id"],)).fetchone()
+            self.assertIn("липсва дата", red["prichina"])
+
+    def test_limit_10(self):
+        c = cfg()
+        c["izdanie"].update(maks_na_rubrika=99, maks_na_izvor=99)
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, c, DEN, p.danni, SEGA)
+            self.assertEqual(len(d["zapisi"]), 10)
+            self.assertTrue(p.b.execute("SELECT 1 FROM firewall_log WHERE sloy=7 AND prichina LIKE 'дневният лимит%'")
+                            .fetchone())
+
+    def test_bez_model_prazni_tekstove(self):
+        with Papka() as p:
+            podgotvi(p)
+            d, pj = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            self.assertFalse(d["s_model"])
+            self.assertTrue(all(z["kakvo"] == "" and z["znachi"] == "" for z in d["zapisi"]))
+            with open(pj.replace(".json", ".md"), encoding="utf-8") as f:
+                self.assertIn("без модел", f.read())
+
+    def test_s_model(self):
+        with Papka() as p:
+            podgotvi(p)
+            m = FalshivModel()
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA, model=m)
+            self.assertTrue(all(z["kakvo"] and z["znachi"] for z in d["zapisi"]))
+            self.assertEqual(len(m.vikaniya), len(d["zapisi"]))
+
+    def test_vratata_spira_bez_fail(self):
+        with Papka() as p:
+            podgotvi(p)
+            with self.assertRaises(VrataNeBezopasno):
+                izd.chernova(p.b, cfg(), DEN, p.danni, SEGA, model=FalshivModel(vrata=Otvorena(["ok", "busy"])))
+            self.assertFalse(os.path.exists(os.path.join(p.danni, "chernova_2026-10-05.json")))
+
+    def test_citat_e_kratak(self):
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            for z in d["zapisi"]:
+                self.assertTrue(z["citat"])
+                self.assertLessEqual(len(z["citat"]), izd.MAKS_CITAT_ZNACI + 1)
+                self.assertNotIn("tekst", z)
+
+
+class TestOdobri(unittest.TestCase):
+    def test_bez_go_nishto(self):
+        with Papka() as p:
+            podgotvi(p)
+            izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            predi = sorted(os.listdir(p.danni))
+            ostavat, mahnati, izh = izd.odobri(p.b, p.danni, DEN, [2], False, SEGA)
+            self.assertIsNone(izh)
+            self.assertEqual(len(mahnati), 1)
+            self.assertEqual(sorted(os.listdir(p.danni)), predi)
+            self.assertEqual(p.b.execute("SELECT COUNT(*) FROM zapisi WHERE odobren IS NOT NULL").fetchone()[0], 0)
+
+    def test_s_go(self):
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            ostavat, mahnati, izh = izd.odobri(p.b, p.danni, DEN, [1, 3], True, SEGA)
+            self.assertTrue(os.path.exists(izh))
+            with open(izh, encoding="utf-8") as f:
+                o = json.load(f)
+            self.assertEqual([z["nomer"] for z in o["zapisi"]], [z["nomer"] for z in d["zapisi"] if z["nomer"] not in (1, 3)])
+            self.assertEqual(p.b.execute("SELECT COUNT(*) FROM firewall_log WHERE reshenie='МАХНАТ'").fetchone()[0], 2)
+            # одобреното не влиза в следваща чернова
+            d2, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            self.assertFalse({z["id"] for z in o["zapisi"]} & {z["id"] for z in d2["zapisi"]})
+
+    def test_odobreno_v_svodka(self):
+        """Z7b, готово е, когато: 3. Z8 записва „одобрено в сводка“ след odobri --go."""
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            self.assertTrue(all(z["chovek"] == "не" for z in d["zapisi"]))  # преди одобрението
+            self.assertTrue(all(z["uverenost"] in ("ниска", "средна", "висока") for z in d["zapisi"]))
+            izd.odobri(p.b, p.danni, DEN, [1], False, SEGA)  # без --go — нищо
+            for z in p.b.execute("SELECT doverie FROM zapisi WHERE doverie IS NOT NULL"):
+                self.assertEqual(json.loads(z["doverie"])["profil"]["chovek"], "не")
+            ostavat, mahnati, izh = izd.odobri(p.b, p.danni, DEN, [1], True, SEGA)
+            with open(izh, encoding="utf-8") as f:
+                self.assertTrue(all(z["chovek"] == "одобрено в сводка" for z in json.load(f)["zapisi"]))
+            for z in ostavat:
+                dov = json.loads(p.b.execute("SELECT doverie FROM zapisi WHERE id=?", (z["id"],)).fetchone()[0])
+                self.assertEqual(dov["profil"]["chovek"], "одобрено в сводка")
+            mahnat = json.loads(p.b.execute("SELECT doverie FROM zapisi WHERE id=?", (mahnati[0]["id"],)).fetchone()[0])
+            self.assertEqual(mahnat["profil"]["chovek"], "не")  # махнатият не е одобрен
+            izhod = os.path.join(p.d, "izhod")
+            izd.izdanie(cfg(), p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertTrue(all(z["chovek"] == "одобрено в сводка" for z in json.load(f)["zapisi"]))
+
+    def test_nepoznat_nomer(self):
+        with Papka() as p:
+            podgotvi(p)
+            izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            with self.assertRaises(izd.GreshkaIzdanie):
+                izd.odobri(p.b, p.danni, DEN, [99], True, SEGA)
+
+    def test_nyama_chernova(self):
+        with Papka() as p:
+            with self.assertRaises(izd.GreshkaIzdanie):
+                izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+
+
+class TestIzdanie(unittest.TestCase):
+    def napravi(self, p, izhod, dni=(DEN,)):
+        podgotvi(p)
+        for den in dni:
+            izd.chernova(p.b, cfg(), den, p.danni, SEGA, model=FalshivModel())
+            izd.odobri(p.b, p.danni, den, [], True, SEGA)
+        return izd.izdanie(cfg(), p.danni, izhod, DEN)
+
+    def test_rss_i_json(self):
+        with Papka() as p:
+            izhod = os.path.join(p.d, "izhod", "radar")
+            o = self.napravi(p, izhod)
+            self.assertGreater(o["zapisi"], 0)
+            koren = ET.parse(os.path.join(izhod, "rss.xml")).getroot()
+            self.assertEqual((koren.tag, koren.get("version")), ("rss", "2.0"))
+            kanal = koren.find("channel")
+            for el in ("title", "link", "description"):
+                self.assertTrue(kanal.findtext(el))
+            items = kanal.findall("item")
+            self.assertEqual(len(items), o["zapisi"])
+            for it in items:
+                for el in ("title", "link", "guid", "pubDate", "description", "category"):
+                    self.assertTrue(it.findtext(el), el)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                r = json.load(f)
+            self.assertEqual(len(r["zapisi"]), o["zapisi"])
+            self.assertTrue(os.path.exists(os.path.join(izhod, "po-den", "2026-10-05.json")))
+
+    def test_nikoga_palen_tekst(self):
+        with Papka() as p:
+            izhod = os.path.join(p.d, "izhod")
+            self.napravi(p, izhod)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                radar = json.load(f)["zapisi"]
+            with open(os.path.join(izhod, "rss.xml"), encoding="utf-8") as f:
+                rss = f.read()
+            items = {it.findtext("link"): it.findtext("description") for it in ET.fromstring(rss).iter("item")}
+            self.assertTrue(radar)
+            for pub in radar:
+                z = p.b.execute("SELECT tekst FROM zapisi WHERE url=?", (pub["url"],)).fetchone()
+                vid = json.dumps(pub, ensure_ascii=False) + items[pub["url"]]
+                self.assertNotIn(z["tekst"], vid)
+                for s in izrecheniya(z["tekst"])[izd.MAKS_CITAT_IZRECHENIYA:]:
+                    self.assertNotIn(s, pub["citat"] + items[pub["url"]])  # след цитата — нищо от текста
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                for z in json.load(f)["zapisi"]:
+                    self.assertEqual(set(z), {"data", "odobren", "zaglavie", "kakvo", "znachi", "citat", "rubrika",
+                                              "izvor", "ocenka", "po_dumi", "uverenost", "chovek", "url", "reshenie"})
+                    self.assertEqual(z["reshenie"], "ПРОПУСНИ")
+
+    def test_publichno_samo_propusni(self):
+        """Дори ако одобрен файл съдържа ПРЕДУПРЕДИ (напр. от по-ранна версия), публично не излиза."""
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+            path = os.path.join(p.danni, "odobreno_2026-10-05.json")
+            with open(path, encoding="utf-8") as f:
+                o = json.load(f)
+            predupredi = dict(d["za_svedenie"][0], nomer=99)
+            o["zapisi"].append(predupredi)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(o, f, ensure_ascii=False)
+            izhod = os.path.join(p.d, "izhod")
+            rez = izd.izdanie(cfg(), p.danni, izhod, DEN)
+            self.assertEqual(rez["zapisi"], len(d["zapisi"]))
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertEqual({z["reshenie"] for z in json.load(f)["zapisi"]}, {"ПРОПУСНИ"})
+            with open(os.path.join(izhod, "po-den", "2026-10-05.json"), encoding="utf-8") as f:
+                self.assertEqual({z["reshenie"] for z in json.load(f)["zapisi"]}, {"ПРОПУСНИ"})
+            with open(os.path.join(izhod, "rss.xml"), encoding="utf-8") as f:
+                rss = f.read()
+            self.assertNotIn(predupredi["url"], rss)
+            self.assertNotIn("решение: ПРЕДУПРЕДИ", rss)
+
+    def test_za_svedenie(self):
+        """Десетте места са само за ПРОПУСНИ; ПРЕДУПРЕДИ — в „За сведение“, без място и без одобрение."""
+        c = cfg()
+        c["izdanie"].update(maks_na_den=99, maks_na_rubrika=99, maks_na_izvor=99)
+        with Papka() as p:
+            podgotvi(p)
+            predupredi = {r["id"] for r in p.b.execute("SELECT id FROM zapisi WHERE reshenie='ПРЕДУПРЕДИ'")}
+            self.assertTrue(predupredi)
+            d, pj = izd.chernova(p.b, c, DEN, p.danni, SEGA)
+            self.assertEqual({z["reshenie"] for z in d["zapisi"]}, {"ПРОПУСНИ"})
+            self.assertEqual({z["id"] for z in d["za_svedenie"]}, predupredi)
+            self.assertTrue(all(z["nomer"] is None for z in d["za_svedenie"]))
+            with open(pj.replace(".json", ".md"), encoding="utf-8") as f:
+                md = f.read()
+            self.assertIn("## За сведение", md)
+            self.assertLess(md.index("Одобряване:"), md.index("## За сведение"))  # под черновата
+            # не заемат от десетте места: при лимит 1 остава 1 ПРОПУСНИ, а сведенията са всички
+            c["izdanie"]["maks_na_den"] = 1
+            d1, _ = izd.chernova(p.b, c, DEN, p.danni, SEGA)
+            self.assertEqual(len(d1["zapisi"]), 1)
+            self.assertEqual({z["id"] for z in d1["za_svedenie"]}, predupredi)
+            # odobri не ги одобрява — нито с --go, нито по номер
+            with self.assertRaises(izd.GreshkaIzdanie):
+                izd.odobri(p.b, p.danni, DEN, [2], True, SEGA)
+            ostavat, _, izh = izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+            self.assertFalse({z["id"] for z in ostavat} & predupredi)
+            self.assertEqual(p.b.execute("SELECT COUNT(*) FROM zapisi WHERE reshenie='ПРЕДУПРЕДИ' "
+                                         "AND odobren IS NOT NULL").fetchone()[0], 0)
+            red = p.b.execute("SELECT prichina FROM firewall_log WHERE sloy=7 AND zapis_id=?",
+                              (sorted(predupredi)[0],)).fetchone()
+            self.assertIn("само за сведение", red["prichina"])
+
+    def test_osite_ne_sa_publichni_po_podrazbirane(self):
+        with Papka() as p:
+            podgotvi(p)
+            izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+            with open(os.path.join(p.danni, "odobreno_2026-10-05.json"), encoding="utf-8") as f:
+                vatr = json.load(f)["zapisi"]
+            self.assertTrue(all(len(z["osi"]) == 7 for z in vatr))  # вътрешно ги има
+            self.assertFalse(cfg()["izdanie"]["publichni_osi"])
+            izhod = os.path.join(p.d, "izhod")
+            izd.izdanie(cfg(), p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertTrue(all("osi" not in z for z in json.load(f)["zapisi"]))
+            c = cfg()
+            c["izdanie"]["publichni_osi"] = True
+            izd.izdanie(c, p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                self.assertTrue(all(len(z["osi"]) == 7 for z in json.load(f)["zapisi"]))
+
+    def test_proverka_sled_odobrenieto_se_vizhda(self):
+        import contextlib
+        import io
+        from doverie import cli as dcli
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+            zid = next(z["id"] for z in d["zapisi"] if z["reshenie"] == "ПРОПУСНИ")
+            with contextlib.redirect_stdout(io.StringIO()):
+                kod = dcli.main(["proveri", "--zapis", str(zid), "--ot", "методист",
+                                 "--baza", os.path.join(p.danni, "filtar.sqlite")])
+            self.assertEqual(kod, 0)
+            izhod = os.path.join(p.d, "izhod")
+            izd.izdanie(cfg(), p.danni, izhod, DEN)
+            with open(os.path.join(izhod, "radar.json"), encoding="utf-8") as f:
+                po_url = {z["url"]: z["chovek"] for z in json.load(f)["zapisi"]}
+            url = next(z["url"] for z in d["zapisi"] if z["id"] == zid)
+            self.assertEqual(po_url.pop(url), "проверено от човек")
+            self.assertTrue(all(v == "одобрено в сводка" for v in po_url.values()))
+
+    def test_30_dni(self):
+        with Papka() as p:
+            izhod = os.path.join(p.d, "izhod")
+            podgotvi(p)
+            izd.chernova(p.b, cfg(), DEN, p.danni, SEGA)
+            izd.odobri(p.b, p.danni, DEN, [], True, SEGA)
+            o = izd.izdanie(cfg(), p.danni, izhod, DEN + timedelta(days=29))
+            self.assertEqual(o["dni"], 1)
+            o = izd.izdanie(cfg(), p.danni, izhod, DEN + timedelta(days=30))
+            self.assertEqual(o["dni"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
