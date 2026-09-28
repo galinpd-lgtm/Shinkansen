@@ -129,7 +129,8 @@ def overlaps(a, b):
     return ax0 < bx1 and bx0 < ax1 and ay0 < by1 and by0 < ay1 and az0 < bz1 and bz0 < az1
 
 
-def export_glb(path):
+def export_glb(path, options=None):
+    """Export the scene as .glb. `options` override the defaults below (unknown ones are skipped)."""
     op = bpy.ops.export_scene.gltf
     known = set(op.get_rna_type().properties.keys())
     wanted = {
@@ -140,6 +141,7 @@ def export_glb(path):
         "export_cameras": False,
         "export_lights": False,
         "export_draco_mesh_compression_enable": False,
+        **(options or {}),
     }
     kwargs = {k: v for k, v in wanted.items() if k in known}
     last_error = None

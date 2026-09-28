@@ -1,0 +1,16 @@
+{
+  "nodes": {
+    "level_0": ["Level 0.00"],
+    "level_1": ["walls_4.00", "columns_4.00", "slab_4.00", "glazing_4.00"],
+    "level_2": ["*_8.00"],
+    "roof": ["roof"]
+  },
+  "colors": {
+    "level_0": "#b9bec6",
+    "level_1": "#a7adb5",
+    "level_2": "#9aa1ab",
+    "roof": "#72849b",
+    "lamp_post": "#3a3f47"
+  },
+  "roughness": 0.8
+}

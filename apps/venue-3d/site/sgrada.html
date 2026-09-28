@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Страница за една сграда: само компонентът. Заглавието и описанието идват от name и description във venue.json.
+       Езикът: ?lang=en, после запазеният избор, после езикът на браузъра. Небе по прогноза: добави forecast="…" на <venue-3d>. -->
+  <title>Сграда в 3D</title>
+  <meta name="description" content="">
+  <script type="module" src="core/venue-3d.js"></script>
+  <style>
+    :root { --page-bg: #f3f5f8; --page-fg: #1d232b; --page-muted: #5f6b78; color-scheme: light dark; }
+    @media (prefers-color-scheme: dark) {
+      :root { --page-bg: #0e1217; --page-fg: #e6eaef; --page-muted: #9aa6b2; }
+      venue-3d {
+        --v3d-fg: #e6eaef; --v3d-muted: #9aa6b2; --v3d-panel: #171c23; --v3d-border: rgba(255, 255, 255, .12);
+        --v3d-bg: linear-gradient(180deg, #1b2533, #11161d); --v3d-ground: #2a3038;
+        --v3d-pin-bg: rgba(23, 28, 35, .95); --v3d-pin-fg: #e6eaef;
+        --v3d-warn-bg: #3a3017; --v3d-warn-fg: #f5e2b0; --v3d-warn-border: #6b5a2a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page-bg); color: var(--page-fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    h1 { margin: 4px 0 6px; font-size: 1.35rem; }
+    .lead { color: var(--page-muted); margin: 0 0 14px; max-width: 70ch; }
+    venue-3d { --v3d-height: min(72vh, 680px); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="title"></h1>
+    <p class="lead" id="lead" hidden></p>
+    <venue-3d src="venue.json"></venue-3d>
+  </div>
+  <script type="module">
+    import { parseVenue, pageMeta } from './core/venue-data.js';
+
+    const el = document.querySelector('venue-3d');
+    const pick = (v) => (v === 'bg' || v === 'en' ? v : null);
+    let saved = null;
+    try { saved = localStorage.getItem('v3d-lang'); } catch { /* без хранилище */ }
+    const lang = pick(new URLSearchParams(location.search).get('lang')) || pick(saved)
+      || ((navigator.language || 'bg').slice(0, 2) === 'bg' ? 'bg' : 'en');
+    document.documentElement.lang = lang;
+    el.setAttribute('lang', lang);
+
+    try {
+      const { venue } = parseVenue(await (await fetch(el.getAttribute('src'), { cache: 'no-cache' })).json());
+      if (venue) {
+        const { title, description } = pageMeta(venue, lang);
+        if (title) { document.title = title; document.getElementById('title').textContent = title; }
+        const lead = document.getElementById('lead');
+        lead.textContent = description;
+        lead.hidden = !description;
+        document.querySelector('meta[name=description]').content = description;
+      }
+    } catch { /* компонентът сам казва, ако venue.json не се чете */ }
+  </script>
+</body>
+</html>

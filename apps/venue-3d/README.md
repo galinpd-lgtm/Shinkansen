@@ -5,11 +5,14 @@
 на конкретна сграда.
 
 **Части:**
-- `blender/` — от числа (`skeleton.json`) до модел (`model.glb`) в Blender; проверка на числата без Blender
+- `blender/` — от числа (`skeleton.json`) до модел (`model.glb`) в Blender; проверка на числата без Blender;
+  `prepare_glb.py` — готов модел на истинска сграда (`.blend`) до леко glb за компонента
 - `core/` — уеб компонентът `<venue-3d>` (ES модул) и чистите му функции
-- `vendor/three/` — three.js 0.186.1, вграден (MIT, `LICENSE` и `VERSION.md` до него) — без CDN
+- `vendor/three/` — three.js 0.186.1, вграден (MIT, `LICENSE` и `VERSION.md` до него) — без CDN; с него и
+  Draco декодерът (Apache-2.0, `LICENSE` до него)
 - `models/arena.example.glb` — моделът на примерната арена, изнесен с Blender скрипта
-- `site/` — демонстрацията; публикува се под `/3d/` (`.github/workflows/pages.yml`)
+- `site/` — демонстрацията (`index.html`) и чистата страница за една сграда (`sgrada.html`); публикуват се под
+  `/3d/` (`.github/workflows/pages.yml`)
 
 ## Как се пуска локално
 
@@ -18,7 +21,7 @@ cd apps/venue-3d
 rm -rf _site && mkdir -p _site/core _site/vendor
 cp -r site/. _site/ && cp core/*.js _site/core/ && cp -r vendor/three _site/vendor/
 cp models/arena.example.glb _site/model.glb && cp blender/skeleton.example.json _site/skeleton.json
-python3 -m http.server -d _site 8000                    # → http://localhost:8000
+python3 -m http.server -d _site 8000                    # → http://localhost:8000 (и /sgrada.html)
 ```
 
 Без `_site/model.glb` страницата строи временен модел от `skeleton.json` и го казва с жълта лента.
@@ -26,9 +29,13 @@ python3 -m http.server -d _site 8000                    # → http://localhost:8
 Тестове — без Blender, без браузър, без зависимости:
 
 ```bash
-python3 -m unittest discover -s blender/tests -v        # skeleton.json: проверка и геометрия
-node --test core/tests/*.test.mjs                       # venue.json, временният модел, размерът под 5 MB
+python3 -m unittest discover -s blender/tests -v        # skeleton.json, правилата и glb-то на prepare_glb.py
+node --test core/tests/*.test.mjs                       # venue.json, временният модел, цветът от glb, размерът под 5 MB
 ```
+
+Тестовете на `prepare_glb.py`, които пускат самия Blender, вървят само където той е наличен — модулът `bpy`
+в същия Python (`pip install bpy==5.0.1`, иска Python 3.11) или `BLENDER=/път/до/blender`. Иначе се пропускат,
+а се проверява готовият изход в `blender/tests/fixtures/synthetic.prepared.glb`.
 
 ## Моделът: `blender/build_venue.py`
 
@@ -59,6 +66,65 @@ blender -b --python blender/build_venue.py -- my-skeleton.json site/model.glb
 сверяват в тестовете срещу `core/tests/fixtures/parts.summary.json`. След промяна на геометрията:
 `python3 blender/tests/test_skeleton.py --write-summary`. Единствената разлика: в браузъра отворите не се
 изрязват — на тяхно място има тъмен панел.
+
+## Истинска сграда: `blender/prepare_glb.py`
+
+Модел на истинска сграда, изнесен направо от Blender, обикновено е тежък (много върхове, ненужни UV),
+разпилян на стотици обекти и с процедурни материали, които не минават в glTF — и сградата излиза бяла.
+Скриптът взима произволен `.blend` (или `.glb`) и дава glb, готов за компонента:
+
+```bash
+cd apps/venue-3d
+python3 blender/glb_prep.py rules.json                  # първо проверка на правилата, без Blender
+blender -b --python blender/prepare_glb.py -- sgrada.blend rules.json site/model.glb --max-mb 5
+python3 blender/glb_prep.py --report site/model.glb     # какво има в готовия файл: възли, цветове, триъгълници
+```
+
+Правилата (`rules.json`) казват кои обекти стават кой възел:
+
+```json
+{"level_0": ["walls_0.00", "columns_0.00"], "level_1": ["walls_*_1"], "roof": ["Roof"]}
+```
+
+или, с цветове за възлите, чиито материали не дават цвят:
+
+```json
+{
+  "nodes": {"level_0": ["Етаж 0.00"], "level_1": ["walls_4.00", "slab_4.00"], "roof": ["Roof*"]},
+  "colors": {"level_0": "#b9bec6", "roof": "#72849b"},
+  "roughness": 0.8,
+  "default_color": "#c8ccd1"
+}
+```
+
+Образецът е име на обект, име на колекция (всички обекти в нея, и вложените) или шаблон с `*`, `?`, `[...]`.
+Всеки обект отива в първия възел, който го поиска. `"#rrggbb"` е sRGB (като в CSS), `[r, g, b]` — линеен
+(като в полетата на Blender). Пример: `blender/tests/fixtures/synthetic.rules.json`.
+
+Какво прави, поред:
+
+1. **Сливане по нива.** Обектите от едно правило стават един възел (с модификаторите, в световни координати).
+   Възлите `level_*` носят в `extras.level` името си — компонентът ги познава и по него. Обектите, които
+   никое правило не иска, остават отделни възли и се изброяват в изхода (`--drop-unmatched` ги изпуска).
+   Камерите, светлините и празните обекти отпадат. Екземплярите на колекции се пропускат с предупреждение —
+   първо ги направи истински (Object ▸ Apply ▸ Make Instances Real).
+2. **Почистване без загуба на формата.** Слива върховете по-близо от `--merge-dist` (1 мм), разтваря плоските
+   стени в многоъгълници (`--planar-angle`, 0,5°), маха висящите ръбове и точки.
+3. **Прости цветове.** Всеки материал се заменя с обикновен: основен цвят (`baseColor`) и грапавост
+   (`roughness`) от Principled BSDF в Blender. Когато цветът идва по свръзки, скриптът следва простите — RGB,
+   Color Ramp (средното на спирките), Mix (средното на двата цвята), Reroute, Hue/Saturation и подобни. Когато
+   няма какво да се прочете (процедурна текстура, материал без Principled), цветът е този на възела от правилата,
+   после `default_color`. Без печене на текстури — затова UV и цветовите атрибути се махат.
+4. **Размер.** Изнася glb и докато файлът е над `--max-mb` (5 MB), опитва поред: без нормали (браузърът оцветява
+   стените плоско — формата е същата), компресия Draco (`--draco auto|on|off`; декодерът е вграден) и чак
+   накрая опростяване (collapse) — единствената стъпка, която променя формата; казва го в изхода.
+
+Изход с код 3, ако и след всичко файлът е над тавана (файлът остава за преглед).
+
+На синтетичния модел (`blender/tests/make_synthetic.py`: 3 нива, купол, 240 хил. върха, процедурни материали,
+9 MB при обикновен износ): 0,24 MB само от сливането и без нормали, 0,04 MB с Draco — без опростяване.
+
+Скриптът работи и с модула `bpy` от PyPI: `python3 blender/prepare_glb.py -- sgrada.blend rules.json out.glb`.
 
 ## Компонентът: `core/venue-3d.js`
 
@@ -92,9 +158,10 @@ blender -b --python blender/build_venue.py -- my-skeleton.json site/model.glb
 |---|---|
 | `schema_version` | `"1"` |
 | `name` | `{bg, en}` (или низ) |
+| `description` | по избор, `{bg, en}` (или низ) — описание под името в `sgrada.html` |
 | `model` | път до `.glb`, спрямо `venue.json` |
 | `skeleton` | път до `skeleton.json` или самият обект — за временния модел |
-| `north_deg` | накъде е истинският север спрямо оста `y` на плана (по часовника, градуси) |
+| `north_deg` | накъде е истинският север спрямо оста `y` на плана (по часовника, градуси); `null` — северът не е потвърден (виж по-долу); без поле — 0 |
 | `camera` | `target` `[x,y,z]`, `distance`, `azimuth_deg` (откъде гледа камерата, по компас), `elevation_deg`, `min_distance`, `max_distance`, `max_target_radius`, `min_elevation_deg` |
 | `roof_nodes` | възлите на покрива (`["roof"]`) |
 | `explode.gap` | разстояние между нивата в разглобения изглед, метри (по подразбиране — по височината на нивата) |
@@ -102,6 +169,18 @@ blender -b --python blender/build_venue.py -- my-skeleton.json site/model.glb
 | `hotspots[]` | `id`, `kind` (`entrance`, `accessible_entrance`, `ticket_office`, `parking`, `transit_stop`, `info`), `name` и `description` `{bg,en}`, `position` `[x,y,z]`, `level` (id на ниво), `inside` (по избор), `node` (по избор — възелът на входа) |
 
 Негодните точки се изпускат, а грешките се пишат в конзолата — страницата не пада заради една точка.
+
+**Непотвърден север: `"north_deg": null`.** При истинска сграда посоката на плана може още да не е сверена.
+Тогава компасът не се рисува, а в реда за състоянието пише „север: непотвърден“ / „north: unconfirmed“.
+С `forecast` небето, валежът и силата на светлината остават по часа, но слънцето и сенките не се рисуват —
+без север посоката им би била измислена; в конзолата се пише защо. Когато северът се потвърди, запиши числото.
+
+### Страница за една сграда: `site/sgrada.html`
+
+Чиста страница само с компонента — без текстовете на демото и без ръководство. Заглавието и описанието под
+него се взимат от `name` и `description` във `venue.json` до нея. Езикът: `?lang=en`, после запазеният избор
+от демото, после езикът на браузъра. Небе по прогноза: добави `forecast="…"` на `<venue-3d>` в страницата.
+До нея трябват `venue.json`, `model.glb`, `core/` и `vendor/`, както при демото.
 
 ### Небе над сградата (по желание): `forecast.json`
 
@@ -141,9 +220,14 @@ blender -b --python blender/build_venue.py -- my-skeleton.json site/model.glb
 `--v3d-pin-bg`, `--v3d-pin-fg`, `--v3d-pin-entrance`, `--v3d-pin-accessible`, `--v3d-pin-service`,
 `--v3d-pin-transport`; жълтата лента — `--v3d-warn-bg|fg|border`. Частите са достъпни и през `::part(...)`:
 `root`, `stage`, `toolbar`, `compass`, `pins`, `level-tags`, `status`, `card`, `list`.
-Моделът от glb пази своите материали; променливите оцветяват временния модел, земята и интерфейса.
+Моделът от glb пази своите материали (цветовете от `prepare_glb.py` стигат до браузъра непроменени);
+променливите оцветяват временния модел, земята и интерфейса.
+
+Компресиран с Draco модел се разкомпресира с вградения декодер (`vendor/three/examples/jsm/libs/draco/gltf/`,
+WebAssembly, 0,25 MB) — той се тегли само тогава. Meshopt не е вграден: Blender не го изнася.
 
 ## Размер
 
-Страница, скриптове, three.js, модел и скелет — около 2,7 MB (под 5 MB; проверява се в тестовете).
-Най-голямото е three.js (2,1 MB некомпресиран; GitHub Pages го праща компресиран).
+Страници, скриптове, three.js с Draco декодера, модел и скелет — около 2,9 MB (под 5 MB; проверява се в
+тестовете). Най-голямото е three.js (2,1 MB некомпресиран; GitHub Pages го праща компресиран); декодерът
+добавя 0,25 MB. Моделът на истинска сграда е отделно: `prepare_glb.py --max-mb` е неговият таван.

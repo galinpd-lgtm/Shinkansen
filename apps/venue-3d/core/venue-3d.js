@@ -11,13 +11,18 @@
 // За часа на избрана проява от forecast.json (схема v2): сцената (ясно/облаци/дъжд/буря/жега/сняг, ден/нощ)
 // като небе и светлина, и истинското слънце по астрономия — със сенки в правилната посока спрямо north_deg.
 // Без атрибута forecast всичко е както преди.
+//
+// Моделът може да е компресиран с Draco (blender/prepare_glb.py): декодерът е вграден в ../vendor/three и се
+// зарежда само тогава. Цветовете идват от материалите в glb. При "north_deg": null няма компас, слънце и сенки.
 
 import * as THREE from '../vendor/three/build/three.module.js';
 import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from '../vendor/three/examples/jsm/loaders/DRACOLoader.js';
 import {
   parseVenue, localText, planToThree, cameraPosition, clampTarget, hiddenNodes, hotspotShown,
   sortHotspots, resolveUrl, easeInOutCubic, bearingVector, explodeOffsets, formatElevation, fitDistance,
+  northPlan,
 } from './venue-data.js';
 import { buildParts } from './skeleton-geometry.js';
 import { pickMoment, eventChoices, forecastUsable, skyLook, sunVector } from './sky.js';
@@ -63,6 +68,14 @@ const MATERIAL_VAR = {
 const FADED = 0.14;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const v3 = (p) => new THREE.Vector3(...planToThree(p));
+// Draco декодерът (WebAssembly, вариантът за glTF) — вграден; тегли се само за компресиран модел
+const DRACO_DIR = new URL('../vendor/three/examples/jsm/libs/draco/gltf/', import.meta.url).href;
+function gltfLoader() {
+  const draco = new DRACOLoader().setDecoderPath({
+    js: `${DRACO_DIR}draco_wasm_wrapper.js`, wasm: `${DRACO_DIR}draco_decoder.wasm`,
+  });
+  return new GLTFLoader().setDRACOLoader(draco);
+}
 
 const STYLE = `
 :host {
@@ -209,6 +222,7 @@ function defineElement() {
 
     connectedCallback() {
       this.bindUi();
+      this.started = true;
       this.load();
     }
 
@@ -220,7 +234,8 @@ function defineElement() {
     }
 
     attributeChangedCallback(name, old, val) {
-      if (!this.isConnected || old === val) return;
+      // при надграждането атрибутите идват преди connectedCallback — той зарежда, не и тук (иначе два пъти)
+      if (!this.started || old === val) return;
       if (name === 'lang') this.renderTexts();
       else if (name === 'forecast') this.loadForecast();
       else if (name === 'event') { this.skyIndex = Number(val) || 0; this.applySky(); }
@@ -247,9 +262,9 @@ function defineElement() {
       this.source = null;
       if (venue.model) {
         try {
-          root = (await new GLTFLoader().loadAsync(resolveUrl(venue.model, this.base))).scene;
+          root = (await gltfLoader().loadAsync(resolveUrl(venue.model, this.base))).scene;
           this.source = 'glb';
-        } catch { /* няма модел — временен от скелета */ }
+        } catch (e) { if (e?.response?.status !== 404) console.warn('venue-3d: model', e); /* → временен от скелета */ }
       }
       if (!root && venue.skeleton) {
         try {
@@ -262,14 +277,18 @@ function defineElement() {
       if (!root) { this.setStatus(this.tx.noModel); return; }
       this.setModel(root);
       this.setStatus(this.source === 'skeleton' ? this.tx.temp : '');
+      if (!northPlan(venue).sun) console.warn('venue-3d: north_deg е null (северът не е потвърден) — без компас; слънцето и сенките от forecast.json не се рисуват, защото посоката им би била измислена');
       this.goHome(true);
       this.loadForecast();
     }
 
+    /** Редът за състоянието: съобщението (зареждане, временен модел…) и бележката за непотвърден север. */
     setStatus(text) {
+      this.statusText = text || '';
+      const note = this.venue ? northPlan(this.venue, this.lang_).note : '';
       const s = this.$('.status');
-      s.textContent = text || '';
-      s.hidden = !text;
+      s.textContent = [this.statusText, note].filter(Boolean).join(' · ');
+      s.hidden = !s.textContent;
     }
 
     // ---------------------------------------------------------------- сцена
@@ -457,11 +476,25 @@ function defineElement() {
       const center = this.bounds ? this.bounds.getCenter(new THREE.Vector3()) : new THREE.Vector3();
       const radius = this.bounds ? this.bounds.getBoundingSphere(new THREE.Sphere()).radius : 60;
       stage.style.background = `linear-gradient(180deg, ${look.skyTop}, ${look.skyBottom})`;
+      const withSun = northPlan(this.venue).sun;   // без потвърден север посоката на слънцето е измислена
       // мъглата в цвета на хоризонта: далечната земя преминава в небето — атмосферата се вижда и отгоре
       this.scene.fog = new THREE.Fog(look.skyBottom, radius * (3 - look.haze * 2), radius * (11 - look.haze * 5));
       this.hemi.intensity = look.hemiIntensity;
       this.hemi.color.set(look.skyTop).lerp(new THREE.Color(0xffffff), 0.55);
       this.baseHemi = look.hemiIntensity;
+      if (!withSun) {
+        // светлината е по часа (ден, здрач, нощ), но от обичайната посока и без сенки и диск
+        this.sun.position.set(120, 220, 90);
+        this.sun.target.position.set(0, 0, 0);
+        this.sun.intensity = look.sunIntensity;
+        this.sun.color.set(look.sunColor);
+        this.setShadows(false);
+        if (this.sunDisc) this.sunDisc.visible = false;
+        this.setPrecip(look.precip, look.precipAmount, center);
+        this.lightning = look.lightning && !this.reduced;
+        this.dirty = true;
+        return;
+      }
       // слънцето: истинската посока за координатите и часа, завъртяна по north_deg на плана
       const dir = new THREE.Vector3(...planToThree(sunVector(m.sun.azimuth, Math.max(m.sun.elevation, 0.5), this.venue.north_deg)));
       this.sun.position.copy(center).addScaledVector(dir, radius * 4);
@@ -557,6 +590,7 @@ function defineElement() {
       const scene = m.scene ? tx.scene[m.scene] : tx.noScene;
       const part = m.light === 'day' ? '' : ` · ${tx[m.light]}`;
       const el = Math.round(m.sun.elevation), az = Math.round(m.sun.azimuth);
+      if (!northPlan(this.venue).sun) return `${time} · ${scene}${part}`;   // без север — без слънце
       const sun = m.sun.elevation > 0 ? tx.sunUp(el, az, tx.dirs[Math.round(az / 45) % 8]) : tx.sunDown;
       return `${time} · ${scene}${part} · ${sun}`;
     }
@@ -764,13 +798,14 @@ function defineElement() {
         this.raycaster.far = dist - 1.5;
         el.classList.toggle('occluded', this.raycaster.intersectObjects(blockers, false).length > 0);
       }
-      // компасът: къде е северът на екрана
+      this.updateTags(w, hgt);
+      // компасът: къде е северът на екрана (само при потвърден север)
+      if (!northPlan(this.venue).compass) return;
       const t = this.controls.target;
       const [bx, by] = bearingVector(this.venue.north_deg);
       const a = t.clone().project(this.camera), b = t.clone().add(v3([bx * 10, by * 10, 0])).project(this.camera);
       const deg = (Math.atan2(b.x - a.x, (b.y - a.y) * (hgt / w)) * 180) / Math.PI;
       this.$('.needle').style.transform = `rotate(${deg}deg)`;
-      this.updateTags(w, hgt);
     }
 
     select(id, fromList = false) {
@@ -911,6 +946,7 @@ function defineElement() {
       sky.textContent = this.skyText();
       sky.hidden = !sky.textContent;
       const compass = this.$('.compass');
+      compass.hidden = !northPlan(this.venue).compass;
       compass.setAttribute('aria-label', tx.northLabel);
       compass.querySelector('b').textContent = tx.north;
 
@@ -925,7 +961,7 @@ function defineElement() {
       this.renderPinTexts();
       this.renderTagTexts();
       if (s.selected) this.showCard(this.venue.hotspots.find((h) => h.id === s.selected));
-      if (this.source === 'skeleton') this.setStatus(tx.temp);
+      this.setStatus(this.source === 'skeleton' ? tx.temp : this.statusText);   // и бележката за севера на новия език
     }
 
     renderPinTexts() {

@@ -144,7 +144,7 @@ test('временният модел: и другите покриви', () => 
   }
 });
 
-test('модел и страница заедно под 5 MB', () => {
+test('модел и страница заедно под 5 MB (с Draco декодера)', () => {
   const root = new URL('../../', import.meta.url);
   const size = (rel) => {
     const u = new URL(rel, root);
@@ -153,7 +153,7 @@ test('модел и страница заедно под 5 MB', () => {
     return readdirSync(u).reduce((s, f) => s + size(`${rel}/${f}`), 0);
   };
   const total = size('site') + size('core/venue-3d.js') + size('core/venue-data.js')
-    + size('core/skeleton-geometry.js') + size('vendor/three') + size('models/arena.example.glb')
+    + size('core/skeleton-geometry.js') + size('core/sky.js') + size('vendor/three') + size('models/arena.example.glb')
     + size('blender/skeleton.example.json');
   assert.ok(total < 5 * 1024 * 1024, `${(total / 1024 / 1024).toFixed(2)} MB`);
 });
