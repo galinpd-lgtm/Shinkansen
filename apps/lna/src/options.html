@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ЛНА — настройки</title>
+  <link rel="stylesheet" href="panel.css">
+  <style>
+    main { max-width: 640px; margin: 0 auto; padding: 20px 16px 40px; }
+    label { display: block; font-weight: 600; margin: 14px 0 4px; }
+    input[type=text], input[type=number] { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--liniya); border-radius: 6px; background: var(--fon); color: var(--tekst); }
+    .red { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+    .red label { display: inline; font-weight: 400; margin: 0; }
+    .sluzheben { color: var(--blad); font-size: 12.5px; }
+    .sastoyanie { margin-top: 10px; min-height: 1.4em; }
+    .sastoyanie.greshka { color: var(--slabo); }
+    button.vtoro { background: transparent; color: var(--akcent); }
+    ol.istoriya { padding-left: 20px; font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ЛНА — настройки</h1>
+  <p class="sluzheben">Всичко тук се пази само в този браузър.</p>
+
+  <h2>Пълна оценка с модел (по желание)</h2>
+  <label for="adres">Адрес на пълната оценка</label>
+  <input id="adres" type="text" placeholder="празно = само правилата в браузъра" autocomplete="off" spellcheck="false">
+  <p class="sluzheben">Оставете празно и нищо няма да напуска браузъра. С адрес, при натискане на иконата, към него се
+    праща само текстът на текущата статия и адресът ѝ — никъде другаде. Пример за собствен компютър:
+    <code>http://127.0.0.1:8765</code> (<code>python -m doverie serve</code>).</p>
+  <div class="red"><button id="primer" type="button" class="vtoro">Попълни http://127.0.0.1:8765</button></div>
+
+  <label for="prag">Праг за предупреждение</label>
+  <input id="prag" type="number" min="0" max="10" step="0.1">
+  <p class="sluzheben">Под него лентата показва предупреждение. По подразбиране 5.0.</p>
+
+  <h2>Модули</h2>
+  <div class="red"><input id="m-pohvati" type="checkbox"><label for="m-pohvati">Похвати с откъсите</label></div>
+  <div class="red"><input id="m-vaprosi" type="checkbox"><label for="m-vaprosi">10-те въпроса за пълнота</label></div>
+  <div class="red"><input id="m-istoriya" type="checkbox"><label for="m-istoriya">История (последните 100 анализа, само обобщение)</label></div>
+
+  <div class="red"><button id="zapazi" type="button">Запази</button></div>
+  <div id="sastoyanie" class="sastoyanie" role="status"></div>
+
+  <h2>История</h2>
+  <ol id="istoriya" class="istoriya"></ol>
+  <div class="red"><button id="iztriy" type="button" class="vtoro">Изтрий историята</button></div>
+</main>
+<script src="pravila.js"></script>
+<script src="dvigatel.js"></script>
+<script src="logika.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
