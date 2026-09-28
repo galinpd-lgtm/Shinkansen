@@ -120,6 +120,10 @@ IZRAZI = {
 }
 SPISACI = {"DILEMA": pohvati.DILEMA, "ANONIMEN": pohvati.ANONIMEN}
 
+# Ос 1 в браузъра: без регистър на източниците — неутрално за всички. Частният регистър се ползва само когато
+# пълната оценка идва от doverie serve на GX10. Публичен регистър — едва след правна проверка и решение на Галин.
+REPUTACIYA_V_BRAUZARA = {"ocenka": 5.0, "zashto": "Няма данни — неутрално."}
+
 
 def pravila(cfg):
     return {
@@ -136,8 +140,7 @@ def pravila(cfg):
         "reshenie": cfg["reshenie"],
         "uverenost": cfg["uverenost"],
         "palnota_vaprosi": cfg["palnota_vaprosi"],
-        "rep_neizvesten": cfg.get("rep_neizvesten", 5.0),
-        "registar_iztochnici": cfg.get("registar_iztochnici") or [],
+        "reputaciya_v_brauzara": REPUTACIYA_V_BRAUZARA,
         "otgovori": {"DA": osi.DA, "CHASTICHNO": osi.CHASTICHNO, "NE": osi.NE, "NEOPREDELIMO": osi.NEOPREDELIMO},
         "chovek": list(CHOVEK),
     }
@@ -171,7 +174,12 @@ def tekstove():
 def ocakvano(cfg):
     sluchai = []
     for ime, t in tekstove():
-        rez = ocenka(t, cfg)
+        rez = ocenka(t, cfg)  # без източник → ос 1 е неутралната стойност от config
+        o1 = rez["profil"]["osi"]["1"]
+        if o1["kluch"] != "reputaciya" or o1["ocenka"] != REPUTACIYA_V_BRAUZARA["ocenka"]:
+            raise SystemExit("ос 1 в doverie без източник не е %.1f — неутралната стойност в браузъра е различна"
+                             % REPUTACIYA_V_BRAUZARA["ocenka"])
+        o1["zashto"] = REPUTACIYA_V_BRAUZARA["zashto"]  # в браузъра текстът е „няма данни“
         norm = tekst.normalizirai(t)
         sluchai.append({
             "ime": ime,

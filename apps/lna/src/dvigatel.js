@@ -165,16 +165,10 @@
     return host.indexOf('www.') === 0 ? host.slice(4) : host;
   }
 
-  function reputaciya(iztochnik) {
-    var d = domain(iztochnik);
-    for (var i = 0; i < P.registar_iztochnici.length; i++) {
-      var z = P.registar_iztochnici[i];
-      if (d && (d === z.domain || d.slice(-(z.domain.length + 1)) === '.' + z.domain)) {
-        return [ogranichi(z.rep_score), 'Източникът „' + (z.ime || d) + '“ е в регистъра.'];
-      }
-    }
-    if (!d) return [P.rep_neizvesten, 'Източникът не е посочен — неутрална оценка.'];
-    return [P.rep_neizvesten, 'Източникът не е в регистъра — неутрална оценка.'];
+  // В браузъра няма регистър на източниците: ос 1 е неутрална за всички сайтове.
+  // Частният регистър се ползва само в пълната оценка от doverie serve на GX10.
+  function reputaciya() {
+    return [P.reputaciya_v_brauzara.ocenka, P.reputaciya_v_brauzara.zashto];
   }
 
   function tvardeniya(tekst) {
@@ -314,7 +308,7 @@
     var belezhki = [];
 
     var sme = {};
-    sme.reputaciya = reputaciya(iztochnik);
+    sme.reputaciya = reputaciya();
     sme.originalnost = originalnost();
     sme.manipulaciya = manipulaciya(namereni);
     sme.proverimost = proverimost(tekst);
