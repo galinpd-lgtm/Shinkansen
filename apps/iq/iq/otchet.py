@@ -41,6 +41,8 @@ def tekst(r, cfg, vatreshno=False):
         procent(ch["dyal_imenuvani"]), procent(naygorna.get("min_imenuvani"))))
     red.append("| Записи с манипулативни похвати | %s | под %s |" % (
         procent(ch["dyal_pohvati"]), procent(naygorna.get("maks_pohvati"))))
+    red.append("| Записи със средна или висока увереност | %s | поне %s |" % (
+        procent(ch["dyal_uverenost"]), procent(naygorna.get("min_uverenost"))))
     red.append("| История | %d дни (от %s) | поне %s дни |" % (
         ch["istoriya_dni"], den(ch["parvi_zapis"]) if ch["parvi_zapis"] else "—", naygorna.get("min_istoriya_dni", "—")))
     red.append("| Седмици с публикации | %d от %d | — |" % (ch["sedmici_s_publikacii"], len(ch["sedmici"])))

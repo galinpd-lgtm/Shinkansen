@@ -30,7 +30,7 @@ def zaredi(path=None):
             cfg = json.load(f)
     except (OSError, ValueError) as e:
         raise GreshkaConfig("не мога да прочета конфигурацията %s: %s" % (p, e))
-    for k in ("filtar_danni", "kanali", "papka_danni", "prozorec_dni", "imenuvani_prag", "stepeni", "bez_stepen",
+    for k in ("filtar_danni", "kanali", "papka_danni", "prozorec_dni", "imenuvani_prag", "uverenost_dostatachna", "stepeni", "bez_stepen",
               "spryana", "otchet"):
         if k not in cfg:
             raise GreshkaConfig("конфигурацията %s: липсва „%s“" % (p, k))

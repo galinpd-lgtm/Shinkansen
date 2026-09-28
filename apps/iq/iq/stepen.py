@@ -12,6 +12,9 @@ from .dov import OSI_KLUCHOVE, okragli
 from .tekstove import chislo, procent
 
 
+BEZ_MODEL = "оценките са само по правила; A и A+ изискват оценка с модел"
+
+
 def _sredno(chisla):
     """Средно в точна десетична аритметика, закръглено до 1 знак (9.25 → 9.3, не 9.2 от двоичната грешка)."""
     chisla = list(chisla)
@@ -36,7 +39,7 @@ def chisla(vsichki, ot, do, cfg):
         "period": {"ot": ot.isoformat(), "do": do.isoformat(), "dni": dni},
         "zapisi": n,
         "sredna": _sredno(z["ocenka"] for z in v),
-        "dyal_imenuvani": None, "dyal_pohvati": None,
+        "dyal_imenuvani": None, "dyal_pohvati": None, "dyal_uverenost": None,
         "parvi_zapis": parvi.isoformat() if parvi else None,
         "istoriya_dni": (do - parvi).days + 1 if parvi else 0,
         "osi": {}, "sedmici": [], "sedmici_s_publikacii": 0, "pohvati": [],
@@ -47,6 +50,8 @@ def chisla(vsichki, ot, do, cfg):
         prag = cfg["imenuvani_prag"]
         ch["dyal_imenuvani"] = round(sum(1 for z in v if z["osi"].get("prozrachnost", 0) >= prag) / n, 4)
         ch["dyal_pohvati"] = round(sum(1 for z in v if z["pohvati"]) / n, 4)
+        dostatachna = set(cfg["uverenost_dostatachna"])
+        ch["dyal_uverenost"] = round(sum(1 for z in v if z["uverenost"] in dostatachna) / n, 4)
     for k in OSI_KLUCHOVE:
         ch["osi"][k] = _sredno(z["osi"][k] for z in v if k in z["osi"])
     for z in v:
@@ -91,6 +96,9 @@ def _usloviya(s, ch):
     if "min_sedmici_s_publikacii" in s and ch["sedmici_s_publikacii"] < s["min_sedmici_s_publikacii"]:
         ne.append("седмици с публикации %d от %d (нужни поне %d)" % (ch["sedmici_s_publikacii"], len(ch["sedmici"]),
                                                                        s["min_sedmici_s_publikacii"]))
+    if "min_uverenost" in s and ch["dyal_uverenost"] < s["min_uverenost"]:
+        ne.append("записи със средна или висока увереност %s (нужни поне %s) — %s" % (
+            procent(ch["dyal_uverenost"]), procent(s["min_uverenost"]), BEZ_MODEL))
     return ne
 
 

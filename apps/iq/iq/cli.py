@@ -105,6 +105,7 @@ def _pokazhi(r):
     print("Средна оценка:                   %s" % chislo(ch["sredna"]))
     print("Записи с именувани източници:    %s" % procent(ch["dyal_imenuvani"]))
     print("Записи с манипулативни похвати:  %s" % procent(ch["dyal_pohvati"]))
+    print("Средна или висока увереност:     %s" % procent(ch["dyal_uverenost"]))
     print("История:                         %d дни" % ch["istoriya_dni"])
     print("Седмици с публикации:            %d от %d" % (ch["sedmici_s_publikacii"], len(ch["sedmici"])))
 

@@ -8,7 +8,8 @@ from iq import stepen as st
 
 
 def ch(**k):
-    c = {"zapisi": 40, "sredna": 8.0, "dyal_imenuvani": 1.0, "dyal_pohvati": 0.0, "istoriya_dni": 400,
+    c = {"zapisi": 40, "sredna": 8.0, "dyal_imenuvani": 1.0, "dyal_pohvati": 0.0, "dyal_uverenost": 1.0,
+         "istoriya_dni": 400,
          "sedmici": [{}] * 4, "sedmici_s_publikacii": 4}
     c.update(k)
     return c
@@ -40,6 +41,25 @@ class TestGranici(unittest.TestCase):
         self.assertEqual(kod(sredna=8.0, dyal_pohvati=0.05), "B")
         self.assertEqual(kod(sredna=8.0, istoriya_dni=90), "A")
         self.assertEqual(kod(sredna=8.0, istoriya_dni=89), "B")
+
+    def test_uverenost(self):
+        # A и A+ искат поне половината записи със средна или висока увереност; иначе най-много B
+        self.assertEqual(kod(sredna=9.5, dyal_uverenost=0.5), "A+")
+        self.assertEqual(kod(sredna=9.5, dyal_uverenost=0.4999), "B")
+        self.assertEqual(kod(sredna=8.0, dyal_uverenost=0.5), "A")
+        self.assertEqual(kod(sredna=8.0, dyal_uverenost=0.4999), "B")
+        self.assertEqual(kod(sredna=8.0, dyal_uverenost=0.0), "B")
+        self.assertEqual(kod(sredna=6.5, dyal_uverenost=0.0), "B")  # B не иска модел
+        self.assertEqual(kod(sredna=9.5, dyal_uverenost=0.0, dyal_pohvati=0.2), "C")
+        r = st.stepen(ch(sredna=8.0, dyal_uverenost=0.2), cfg())
+        self.assertIn("оценките са само по правила; A и A+ изискват оценка с модел", r["prichini"][0])
+        self.assertIn("20% (нужни поне 50%)", r["prichini"][0])
+
+    def test_uverenost_pragat_e_v_config(self):
+        c = cfg()
+        for s in c["stepeni"][:2]:
+            s["min_uverenost"] = 0.1
+        self.assertEqual(st.stepen(ch(sredna=8.0, dyal_uverenost=0.2), c)["kod"], "A")
 
     def test_b_usloviya(self):
         self.assertEqual(kod(sredna=6.5, dyal_pohvati=0.1499), "B")
@@ -111,6 +131,12 @@ class TestChisla(unittest.TestCase):
         self.assertEqual(c["istoriya_dni"], 270)    # но историята започва от него
         self.assertEqual(c["sedmici_s_publikacii"], 1)
         self.assertEqual(len(c["sedmici"]), 4)
+
+    def test_dyal_uverenost(self):
+        z = [zapis(self.DO, 7.0) for _ in range(4)]
+        z[0]["uverenost"], z[1]["uverenost"] = "средна", "висока"
+        c = st.chisla(z, self.DO - timedelta(days=27), self.DO, cfg())
+        self.assertEqual(c["dyal_uverenost"], 0.5)
 
     def test_imenuvani_i_pohvati(self):
         z = [zapis(self.DO, 7.0, proz=5.0), zapis(self.DO, 7.0, proz=4.9),

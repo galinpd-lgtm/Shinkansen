@@ -4,10 +4,13 @@
   "papka_danni": "danni",
   "prozorec_dni": 28,
   "imenuvani_prag": 5.0,
+  "uverenost_dostatachna": ["средна", "висока"],
   "stepeni": [
     {"kod": "A+", "ot": 9.0, "min_imenuvani": 0.90, "maks_pohvati": 0.02, "min_istoriya_dni": 365,
+     "min_uverenost": 0.5,
      "cvyat": "#1b5e20", "cvyat_ime": "тъмнозелено"},
     {"kod": "A", "ot": 7.5, "min_imenuvani": 0.75, "maks_pohvati": 0.05, "min_istoriya_dni": 90,
+     "min_uverenost": 0.5,
      "cvyat": "#2e7d32", "cvyat_ime": "зелено"},
     {"kod": "B", "ot": 6.0, "maks_pohvati": 0.15, "min_sedmici_s_publikacii": 3,
      "cvyat": "#f9a825", "cvyat_ime": "жълто"},

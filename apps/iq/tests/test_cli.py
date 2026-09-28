@@ -50,7 +50,7 @@ class TestIzchisli(unittest.TestCase):
     def test_trite_kanala_i_malko_danni(self):
         with Papka() as p:
             h = Hod(p)
-            ochakvano = {"primeren-glas": "A+", "primeren-vestnik": "A", "primeren-portal": "B",
+            ochakvano = {"primeren-glas": "A+", "primeren-vestnik": "A", "primeren-pravila": "B", "primeren-portal": "B",
                          "primeren-byuletin": "C", "primeren-blog": "Без степен", "primeren-sayt": "Спряна"}
             for k, s in ochakvano.items():
                 with self.subTest(kanal=k):
@@ -67,6 +67,8 @@ class TestIzchisli(unittest.TestCase):
             self.assertEqual(v["dyal_imenuvani"], 0.85)
             self.assertEqual(v["dyal_pohvati"], 0.025)
             self.assertEqual(v["istoriya_dni"], 200)
+            self.assertEqual(v["dyal_uverenost"], 0.5)
+            self.assertEqual(v["bez_model"], 20)
             self.assertEqual(v["period"], {"ot": "2026-08-31", "do": "2026-09-27", "dni": 28})
             b = h.json("primeren-byuletin")["chisla"]
             self.assertEqual((b["sredna"], b["dyal_pohvati"], b["dyal_imenuvani"]), (5.0, 0.3, 0.3))
@@ -222,6 +224,15 @@ class TestOtchet(unittest.TestCase):
             for d in ZABRANENI:
                 self.assertNotIn(d, cheti(m).lower())
 
+    def test_bez_model_samo_b(self):
+        with Papka() as p:
+            o = os.path.join(p.d, "o.md")
+            self.assertEqual(Hod(p)("otchet", "--kanal", "primeren-pravila", "--izhod", o)[0], 0)
+            t = cheti(o)
+            self.assertIn("## Степен: B", t)
+            self.assertIn("оценките са само по правила; A и A+ изискват оценка с модел", t)
+            self.assertIn("| Записи със средна или висока увереност | 45% | поне 50% |", t)
+
     def test_rachno_spryana_v_otcheta(self):
         with Papka() as p:
             o = os.path.join(p.d, "o.md")
@@ -242,7 +253,8 @@ class TestMetodika(unittest.TestCase):
             for chast in ("| A+ | 9,0–10,0 |", "| A | 7,5–8,9 |", "| B | 6,0–7,4 |", "| C | 4,0–5,9 |",
                           "поне 90%", "под 2%", "поне 365 дни", "поне 75%", "под 5%", "поне 90 дни",
                           "| Без степен | под 4,0, или под 30 оценени записа, или под 28 дни история",
-                          "никога не се поставя от машината", "последните **28 дни**", "Не се оценяват хора"):
+                          "никога не се поставя от машината", "последните **28 дни**", "Не се оценяват хора",
+                          "поне 50% от записите със средна или висока увереност"):
                 self.assertIn(chast, t)
 
 
