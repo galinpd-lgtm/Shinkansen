@@ -1,0 +1,45 @@
+{
+  "registar": "izvori.json",
+  "papka_dokazatelstva": null,
+  "user_agent_ime": "izvori",
+  "kontakt": "https://github.com/galinpd-lgtm/Shinkansen/tree/main/apps/izvori",
+  "taymaut_s": 30,
+  "pauza_na_domeyn_s": 6,
+  "maks_prenasochvaniya": 5,
+  "maks_glava_bytes": 4096,
+  "maks_tyalo_bytes": 2000000,
+  "roli_odobryavashti": ["редактор", "главен редактор", "собственик на регистъра"],
+  "eshelon_imena": {"parvichen": "първичен", "vtorichen": "вторичен", "posrednik": "посредник"},
+  "vidove": {
+    "proizvoditel": {"ime": "производител", "eshelon": "parvichen", "filtar_vid": "oficialen"},
+    "regulator":    {"ime": "регулатор", "eshelon": "parvichen", "filtar_vid": "oficialen"},
+    "izsledvane":   {"ime": "изследване", "eshelon": "parvichen", "filtar_vid": "dokumentaciya"},
+    "agenciya":     {"ime": "агенция", "eshelon": "posrednik", "filtar_vid": "medija"},
+    "media":        {"ime": "медия", "eshelon": "vtorichen", "filtar_vid": "medija"},
+    "partnyor":     {"ime": "партньор", "eshelon": "vtorichen", "filtar_vid": "obshtnost"},
+    "arhiv":        {"ime": "архив", "eshelon": "parvichen", "filtar_vid": "dokumentaciya"}
+  },
+  "organizacii": [
+    {"ime": "Примерен производител", "domeyni": ["example.com"], "glavna": "https://example.com/"},
+    {"ime": "Примерен регулатор", "domeyni": ["example.org"], "glavna": "https://example.org/"},
+    {"ime": "Примерна медия", "domeyni": ["example.net"], "glavna": "https://example.net/"}
+  ],
+  "obichayni_patishta_emisiya": ["/feed", "/rss.xml", "/atom.xml", "/feed.xml"],
+  "vid_sadarzhanie": [
+    {"vid": "model_card", "ime": "model/system card", "patishta": ["model-card", "system-card", "modelcard"],
+     "meta": []},
+    {"vid": "izsledvane", "ime": "изследване", "patishta": ["research", "papers", "publications", "abs"],
+     "meta": ["scholarly", "citation_title"]},
+    {"vid": "pres", "ime": "прес-съобщение", "patishta": ["press", "newsroom", "press-release", "media-centre"],
+     "meta": []},
+    {"vid": "politika", "ime": "политика / регулация",
+     "patishta": ["policies", "policy", "regulatory", "legislation"], "meta": []},
+    {"vid": "promeni", "ime": "промени", "patishta": ["changelog", "release-notes", "releases", "whats-new"],
+     "meta": []},
+    {"vid": "status", "ime": "статус", "patishta": ["status", "incidents"], "meta": []},
+    {"vid": "dokumentaciya", "ime": "документация", "patishta": ["docs", "documentation", "reference", "guide"],
+     "meta": []},
+    {"vid": "blog", "ime": "блог", "patishta": ["blog", "news", "novini", "posts"], "meta": ["article", "blog"]}
+  ],
+  "kirilski_ezici": ["bg", "ru", "uk", "sr", "mk", "be"]
+}

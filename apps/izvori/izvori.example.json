@@ -1,0 +1,17 @@
+{
+  "versiya": 1,
+  "izvori": [
+    {"id": "example-com-blog", "url": "https://example.com/blog/", "vid": "proizvoditel",
+     "organizaciya": "Примерен производител", "eshelon": "parvichen", "sastoyanie": "kandidat",
+     "dobaven": "2026-09-28T08:00:00Z",
+     "istoriya": [{"t": "2026-09-28T08:00:00Z", "ot": null, "kam": "kandidat", "koy": "машина", "belezhka": "добавен"}]},
+    {"id": "example-org-press", "url": "https://example.org/press/", "vid": "regulator",
+     "organizaciya": "Примерен регулатор", "eshelon": "parvichen", "sastoyanie": "kandidat",
+     "dobaven": "2026-09-28T08:00:00Z",
+     "istoriya": [{"t": "2026-09-28T08:00:00Z", "ot": null, "kam": "kandidat", "koy": "машина", "belezhka": "добавен"}]},
+    {"id": "example-net-novini", "url": "https://example.net/novini/", "vid": "media",
+     "organizaciya": "Примерна медия", "eshelon": "vtorichen", "sastoyanie": "kandidat",
+     "dobaven": "2026-09-28T08:00:00Z",
+     "istoriya": [{"t": "2026-09-28T08:00:00Z", "ot": null, "kam": "kandidat", "koy": "машина", "belezhka": "добавен"}]}
+  ]
+}

@@ -1,0 +1,5 @@
+User-agent: izvori
+Disallow: /
+
+User-agent: *
+Allow: /
