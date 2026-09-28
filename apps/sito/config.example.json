@@ -1,0 +1,69 @@
+{
+  "roli_reshavashti": ["собственик на архива", "пазител на архива"],
+
+  "maks_razmer_bytes": 4294967296,
+  "maks_vreme_s": 600,
+  "maks_dalbochina": 3,
+  "blok_bytes": 1048576,
+  "chunk_dumi": 800,
+
+  "propuskay": [".DS_Store", "Thumbs.db", "desktop.ini", ".~lock.*", "~$*"],
+
+  "vidove": {
+    "html":  [".html", ".htm", ".xhtml"],
+    "docx":  [".docx"],
+    "pdf":   [".pdf"],
+    "pptx":  [".pptx"],
+    "zip":   [".zip"],
+    "eml":   [".eml"],
+    "tekst": [".txt", ".md", ".csv"],
+    "media": [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".mp4", ".mkv", ".mov", ".webm", ".avi"]
+  },
+
+  "opakovka": {
+    "vidove": ["html", "pptx", "pdf"],
+    "prag_tekst_kam_razmer": 0.2
+  },
+
+  "dokazatelstvo": {
+    "dumi": ["договор", "фактура", "подпис", "печат", "възложител", "изпълнител", "управител",
+             "contract", "invoice", "signature", "signed"],
+    "min_dumi": 2,
+    "regeksi": [
+      {"ime": "ЕИК/БУЛСТАТ номер", "re": "(?i)(ЕИК|БУЛСТАТ)\\W{0,6}\\d{9}(\\d{4})?(?!\\d)"},
+      {"ime": "ДДС номер", "re": "(?<![A-Z0-9])BG\\d{9,10}(?!\\d)"}
+    ],
+    "pdf_podpis_markeri": ["/FT /Sig", "/FT/Sig", "/Type /Sig", "/Type/Sig", "/ByteRange"]
+  },
+
+  "zhiv": {
+    "patishta": ["*/tekushti/*", "*/rabotni/*", "tekushti/*", "rabotni/*"],
+    "promenen_predi_dni": 30
+  },
+
+  "html": {
+    "propuskay_elementi": ["script", "style", "noscript", "svg", "nav", "template", "iframe", "canvas",
+                           "object", "math"]
+  },
+
+  "ocr": {
+    "ezici": "bul+eng",
+    "dpi": 200,
+    "prag_znaci_na_stranica": 25,
+    "pri_skanirane": false
+  },
+
+  "pptx_pdf_izgled": true,
+
+  "whisper": {"komanda": "whisper", "model": "medium", "ezik": "bg"},
+
+  "predlozheniya": {
+    "opakovka": "MD + chunks; оригиналът е кандидат за студен архив — само след отделно „да“",
+    "dokazatelstvo": "остава PDF/оригинал; MD до него в изхода",
+    "zhiv": "само MD в базата; файлът не се пипа",
+    "tekst": "MD + chunks; оригиналът остава, където е",
+    "dublikat": "нищо — сочи към първия",
+    "neyasno": "само се записва",
+    "kontejner": "само четене; съдържанието минава поотделно"
+  }
+}
