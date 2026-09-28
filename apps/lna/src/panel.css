@@ -1,0 +1,46 @@
+:root {
+  --fon: #ffffff; --tekst: #1d2733; --blad: #5b6775; --liniya: #e3e7ec; --karta: #f6f8fa;
+  --akcent: #1f4e79; --dobre: #2e7d4f; --sredno: #b7791f; --slabo: #b83232; --model: #6b46c1;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --fon: #14191f; --tekst: #e6ebf0; --blad: #9aa6b2; --liniya: #2a333d; --karta: #1b222a;
+    --akcent: #7fb2e5; --dobre: #5cc28a; --sredno: #e0a84a; --slabo: #f07373; --model: #b69cf0; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fon); color: var(--tekst); }
+main { padding: 14px 14px 8px; }
+h1 { font-size: 16px; margin: 0 0 2px; line-height: 1.3; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--blad); margin: 18px 0 8px; }
+.izvor { color: var(--blad); font-size: 12px; margin-bottom: 10px; word-break: break-all; }
+.rezhim { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--karta); border: 1px solid var(--liniya); }
+.vnimanie { background: color-mix(in srgb, var(--sredno) 14%, transparent); border-left: 3px solid var(--sredno); padding: 8px 10px; margin: 10px 0; border-radius: 4px; }
+.belezhka { color: var(--blad); font-size: 12px; margin: 6px 0; }
+.os { padding: 8px 0; border-bottom: 1px solid var(--liniya); }
+.os-glava { display: flex; align-items: baseline; gap: 8px; }
+.os-ime { flex: 1; font-weight: 600; }
+.os-ocenka { font-variant-numeric: tabular-nums; font-weight: 600; }
+.os-merki { font-size: 11px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--liniya); color: var(--blad); }
+.os-merki.model { color: var(--model); border-color: var(--model); }
+.leta { height: 5px; background: var(--liniya); border-radius: 3px; margin: 5px 0 4px; overflow: hidden; }
+.leta span { display: block; height: 100%; border-radius: 3px; background: var(--akcent); }
+.os-zashto { color: var(--blad); font-size: 12.5px; }
+.vaprosi { margin: 6px 0 0; padding-left: 0; list-style: none; font-size: 12.5px; }
+.vaprosi li { display: grid; grid-template-columns: 1fr minmax(4.5em, 42%); gap: 10px; padding: 2px 0; align-items: start; }
+.vaprosi .otg { font-weight: 600; text-align: right; }
+.otg.da { color: var(--dobre); } .otg.chastichno { color: var(--sredno); } .otg.ne { color: var(--slabo); }
+.otg.neopr { color: var(--blad); font-weight: 400; font-style: italic; }
+.uverenost .nivo { font-weight: 700; }
+.nivo.ниска { color: var(--slabo); } .nivo.средна { color: var(--sredno); } .nivo.висока { color: var(--dobre); }
+ul.prichini { margin: 4px 0 0; padding-left: 18px; color: var(--blad); font-size: 12.5px; }
+.pohvat { background: var(--karta); border: 1px solid var(--liniya); border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+.pohvat-ime { font-weight: 600; }
+.otkas { margin: 6px 0; padding-left: 8px; border-left: 3px solid var(--akcent); font-style: italic; }
+.obyasnenie { color: var(--blad); font-size: 12.5px; }
+.obshta { margin-top: 22px; padding-top: 10px; border-top: 1px dashed var(--liniya); color: var(--blad); font-size: 12px; }
+.obshta b { font-weight: 600; color: var(--tekst); }
+.prazno, .raboti, .greshka { color: var(--blad); }
+.greshka { color: var(--slabo); }
+.dolu { display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  padding: 10px 14px 16px; border-top: 1px solid var(--liniya); }
+button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--akcent); background: var(--akcent); color: #fff; cursor: pointer; }
+a { color: var(--akcent); }
