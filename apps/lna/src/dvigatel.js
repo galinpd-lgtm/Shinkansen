@@ -80,6 +80,27 @@
     return z;
   }
 
+  // „не всички“, „няма опасност“ … — като pohvati.otricano в doverie
+  function otricano(t, nachalo, kraj, sled) {
+    var izr = Math.max.apply(null, ['.', '!', '?', '…'].map(function (z) {
+      return nachalo === 0 ? -1 : t.lastIndexOf(z, nachalo - 1);
+    })) + 1;
+    var chasti = t.slice(izr, nachalo).replace(R.VYARNO_CHE.g, 'вярно че').split(R.PREKASVA.g);
+    if (ima(R.OTRICANIE_PREDI, chasti[chasti.length - 1])) return true;
+    if (!sled || kraj === undefined) return false;
+    var m = t.slice(kraj, kraj + 20).match(R.OTRICANIE_SLED.s);
+    return !!(m && m.index === 0);
+  }
+
+  // Първото неотречено съвпадение — по реда на шаблоните.
+  function parvo(t, sabl) {
+    for (var i = 0; i < sabl.length; i++) {
+      var sp = vsichki(sabl[i], t);
+      for (var j = 0; j < sp.length; j++) if (!otricano(t, sp[j].index)) return sp[j];
+    }
+    return null;
+  }
+
   function aiVeroyatnost(t) {
     var izr = izrecheniya(t);
     if (izr.length < 6) return 0.0;
@@ -100,18 +121,17 @@
 
   function poPravila(tekst) {
     var t = normalizirai(tekst), nam = [];
-    var strah = vsichki(R.STRAH, t);
+    var strah = vsichki(R.STRAH, t).filter(function (m) {
+      return !otricano(t, m.index, m.index + m[0].length, true);
+    });
     if (strah.length >= 2) {
       nam.push(zapis('appeal_to_fear', izrechenieOkolo(t, strah[0].index),
         'Текстът натрупва думи за опасност и заплаха (' + strah.length + ' пъти).'));
     }
-    for (var i = 0; i < DILEMA.length; i++) {
-      var m = t.match(DILEMA[i].s);
-      if (m) {
-        nam.push(zapis('false_dichotomy', m[0],
-          'Представени са само два изхода или един-единствен, без други възможности.'));
-        break;
-      }
+    var m = parvo(t, DILEMA);
+    if (m) {
+      nam.push(zapis('false_dichotomy', m[0],
+        'Представени са само два изхода или един-единствен, без други възможности.'));
     }
     var nameren = false;
     for (var j = 0; j < ANONIMEN.length && !nameren; j++) {
@@ -125,7 +145,7 @@
         }
       }
     }
-    var mt = t.match(R.TALPA.s);
+    var mt = parvo(t, [R.TALPA]);
     if (mt) {
       nam.push(zapis('bandwagon', mt[0], 'Твърдението се опира на това, че „всички“ мислят така, а не на данни.'));
     }

@@ -111,6 +111,8 @@ IZRAZI = {
     "IZR": tekst._IZR, "DUMA": tekst._DUMA,
     # pohvati.py
     "STRAH": pohvati.STRAH, "CITAT": pohvati.CITAT, "TALPA": pohvati.TALPA,
+    "OTRICANIE_PREDI": pohvati.OTRICANIE_PREDI, "OTRICANIE_SLED": pohvati.OTRICANIE_SLED,
+    "VYARNO_CHE": pohvati.VYARNO_CHE, "PREKASVA": pohvati.PREKASVA,
     # osi.py
     "TVARDENIE": osi.TVARDENIE, "IZTOCHNIK": osi.IZTOCHNIK, "IMENUVAN": osi.IMENUVAN, "ANONIMEN_OS": osi.ANONIMEN,
     "INTERES": osi.INTERES, "REKLAMA": osi.REKLAMA, "KOGA": osi.KOGA, "KADE": osi.KADE, "ZASHTO": osi.ZASHTO,

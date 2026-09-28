@@ -63,6 +63,15 @@ ANONIMEN = [
 CITAT = re.compile(r"https?://|www\.|\(\s*\d{4}\s*\)|публикува\w*|списание|доклад\w*\s+на\s+[А-ЯA-Z]"
                    r"|по данни на\s+[А-ЯA-Z]|„[^“]{3,}“", _F)
 
+# Отрицание пред съвпадението (в същото изречение, след последната запетая): „не всички“, „не всеки“,
+# „едва ли всички“, „не е единственото решение“, „не е вярно, че няма алтернатива“, „няма опасност“, „не е опасна“.
+OTRICANIE_PREDI = re.compile(r"(?:^|\s)(?:не|няма|без|нито|никакв\w*|едва ли|надали|далеч не|съвсем не|никак не"
+                             r"|не е вярно че)(?:\s+[^\s]+){0,2}\s*$", _F)
+# „заплаха няма“ — отрицание след думата (само за страха)
+OTRICANIE_SLED = re.compile(r"^\s+няма\b", _F)
+VYARNO_CHE = re.compile(r"вярно,\s*че", _F)
+PREKASVA = re.compile(r"[,;:—–]")
+
 TALPA = re.compile(r"\b(всички\s+(знаят|смятат|мислят|са съгласни|го казват)|всеки\s+знае"
                    r"|мнозинството\s+(смята|мисли|е съгласно|знае)|никой\s+не\s+се\s+съмнява)", _F)
 
@@ -79,18 +88,29 @@ def zapis(kluch, otkas, obyasnenie, veroyatnost=None):
     return z
 
 
+def otricano(t, nachalo, kraj=None, sled=False):
+    """Истина, ако съвпадението t[nachalo:kraj] е отречено: „не всички“, „няма опасност“ (и „заплаха няма“ при sled)."""
+    izr = max(t.rfind(z, 0, nachalo) for z in ".!?…") + 1
+    predi = PREKASVA.split(VYARNO_CHE.sub("вярно че", t[izr:nachalo]))[-1]
+    if OTRICANIE_PREDI.search(predi):
+        return True
+    return bool(sled and kraj is not None and OTRICANIE_SLED.match(t[kraj:kraj + 20]))
+
+
 def _parvo(t, sabl):
+    """Първото съвпадение, което не е отречено — по реда на шаблоните."""
     for s in sabl:
-        m = s.search(t)
-        if m:
-            return m
+        for m in s.finditer(t):
+            if not otricano(t, m.start()):
+                return m
     return None
 
 
 def strah_kandidat(t):
-    """Думите за страх. Връща (брой срещания, първото изречение) — без модел трябват поне 2."""
+    """Думите за страх, без отречените („няма опасност“, „не е опасна“, „заплаха няма“).
+    Връща (брой срещания, първото изречение) — без модел трябват поне 2."""
     t = normalizirai(t)
-    sr = list(STRAH.finditer(t))
+    sr = [m for m in STRAH.finditer(t) if not otricano(t, m.start(), m.end(), sled=True)]
     if not sr:
         return 0, None
     return len(sr), izrechenie_okolo(t, sr[0].start())
@@ -137,7 +157,7 @@ def po_pravila(tekst, s_model=False, ai_flag_ot=0.5):
         if nam and nam[-1]["kluch"] == "anonymous_authority":
             break
 
-    m = TALPA.search(t)
+    m = _parvo(t, [TALPA])
     if m:
         nam.append(zapis("bandwagon", m.group(0),
                          "Твърдението се опира на това, че „всички“ мислят така, а не на данни."))
