@@ -82,6 +82,52 @@ class TestPravila(unittest.TestCase):
         self.assertEqual(set(PRAVILA) | set(MODELNI) | {"ai_generated"}, set(pohvati.POHVATI))
 
 
+class TestOtricaniya(unittest.TestCase):
+    """Отреченото не е похват: „не всички“ не е „всички така мислят“, „няма опасност“ не е апел към страх."""
+
+    SLUCHAI = {
+        "bandwagon": (
+            ["Всички знаят, че е така.", "Всеки знае отговора.", "Мнозинството смята, че е вярно.",
+             "Никой не се съмнява, че е така.",  # двойно отрицание = „всички са съгласни“ — остава похват
+             "Ако не действаме, всички знаят какво следва."],  # отрицанието е в друга част на изречението
+            ["Не всички са съгласни с мерките.", "Не всеки знае това правило.", "Едва ли всички знаят какво става.",
+             "Далеч не всички смятат така.", "Съвсем не всички мислят така.", "Надали всички са съгласни.",
+             "Не е вярно, че всички знаят това.", "Никой не знае какво ще стане."]),
+        "false_dichotomy": (
+            ["Няма алтернатива на този план.", "Това е единственото решение.", "Или ще платим, или ще загубим.",
+             "Няма друг избор за града."],
+            ["Това не е единственото решение.", "Не е вярно, че няма алтернатива.",
+             "Едва ли е единственото решение.", "Това съвсем не е единственият изход."]),
+        "appeal_to_fear": (
+            ["Опасността е огромна. Заплахата расте.", "Опасността не е малка. Заплахата расте."],
+            ["Няма опасност за хората. Заплаха няма и за децата.", "Водата не е опасна. Не представлява заплаха.",
+             "Без опасност за здравето. Никаква заплаха за децата.", "Опасност няма. Заплаха няма."]),
+    }
+
+    def test_polozhitelni(self):
+        for k, (da, _) in self.SLUCHAI.items():
+            for t in da:
+                with self.subTest(k, t=t):
+                    self.assertIn(k, kluchove(ocenka(t, cfg())))
+
+    def test_otricatelni(self):
+        for k, (_, ne) in self.SLUCHAI.items():
+            for t in ne:
+                with self.subTest(k, t=t):
+                    self.assertNotIn(k, kluchove(ocenka(t, cfg())))
+
+    def test_otrechenoto_ne_zasenchva_sledvashtoto(self):
+        # първото е отречено, второто не — хваща се второто, с неговия откъс
+        rez = ocenka("Не всички са съгласни. Но всички знаят, че цените растат.", cfg())
+        p = next(p for p in rez["pohvati"] if p["kluch"] == "bandwagon")
+        self.assertEqual(p["otkas"].lower(), "всички знаят")
+        self.assertIn("всички знаят", "Но всички знаят, че цените растат.")
+
+    def test_anonimen_avtoritet_ostava_i_s_otricanie(self):
+        # „експертите не смятат“ пак е позоваване на неназовани експерти — не е грешка от същия вид
+        self.assertIn("anonymous_authority", kluchove(ocenka("Експертите смятат, че това не е опасно.", cfg())))
+
+
 class TestModelni(unittest.TestCase):
     def test_polozhitelni(self):
         for k, otkas in MODELNI.items():
