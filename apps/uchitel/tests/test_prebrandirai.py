@@ -181,6 +181,19 @@ class TestCelostVPopravkata(unittest.TestCase):
             self.assertEqual(len(zr), len(POPRAVENI))
             self.assertIn("заглавия", zr[0]["бележка"])
 
+    def test_dvuezichnoto_podzaglavie_se_pazi(self):
+        with VremennaPapka() as v:
+            rel = "gx10/GX_01_Laboratoriya.html"
+            v.pishi(rel, procheti(rel).replace(
+                "⬡ KAGAMI GX10 Хъб · Лаборатория",
+                '⬡ KAGAMI <span class="bg-only">GX10 Хъб · Лаборатория</span><span class="en-only">GX10 Hub · Lab</span>'))
+            pusni("prebrandirai", v.vhod, "--izhod", v.pat("izh"), "--go")
+            nov = procheti(rel, v.pat("izh"))
+            self.assertIn('<span class="kg-logo-kurs"><span class="bg-only">GX10 Хъб · Лаборатория</span>'
+                          '<span class="en-only">GX10 Hub · Lab</span></span>', nov)
+            # без английски вариант — едно име и за двата изгледа
+            self.assertIn('<span class="kg-logo-kurs">n8n</span>', procheti("n8n/N8_01_Parvi_potok.html", v.pat("izh")))
+
     def test_bez_logo_s_ime_po_papka_se_popravya(self):
         with VremennaPapka() as v:
             with open(KANON_PAT, encoding="utf-8") as f:

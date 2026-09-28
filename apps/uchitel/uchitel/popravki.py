@@ -33,8 +33,10 @@ def _logo(doc, k, rel, znak, redakcii, p):
         p.blokirano.append(("лого", plan[1]))
         return False
     esc = html_mod.escape
-    ime = plan[2]
-    vatre = lg["vatreshnost"].format(znak=znak, tekst=esc(lg["tekst"]), kurs=esc(ime))
+    ime = analiz.ime_za_pokaz(plan)
+    en = plan[4] if len(plan) > 4 else None
+    kurs = lg["kurs_dvuezichno"].format(bg=esc(plan[2]), en=esc(en)) if en else esc(plan[2])
+    vatre = lg["vatreshnost"].format(znak=znak, tekst=esc(lg["tekst"]), kurs=kurs)
     if plan[0] == "добави":
         lenta = plan[1]
         redakcii.append((lenta.otv_kraj, lenta.otv_kraj, lg["nov_blok"].format(vatreshnost=vatre)))

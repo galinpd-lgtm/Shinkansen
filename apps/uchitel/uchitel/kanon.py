@@ -53,12 +53,15 @@ def proveri(k):
     if greshki:
         return greshki
     lg = k["logo"]
-    for pole in ("znak", "tekst", "klasove", "marker_klas", "vatreshnost", "nov_blok", "css"):
+    for pole in ("znak", "tekst", "klasove", "marker_klas", "vatreshnost", "kurs_dvuezichno", "nov_blok", "css"):
         if pole not in lg:
             greshki.append("липсва logo.%s" % pole)
     for pole in ("{znak}", "{tekst}", "{kurs}"):
         if pole not in lg.get("vatreshnost", ""):
             greshki.append("logo.vatreshnost няма %s" % pole)
+    for pole in ("{bg}", "{en}"):
+        if pole not in lg.get("kurs_dvuezichno", ""):
+            greshki.append("logo.kurs_dvuezichno няма %s" % pole)
     if lg.get("marker_klas", "") not in lg.get("vatreshnost", ""):
         greshki.append("logo.vatreshnost не съдържа marker_klas — повторно пускане би сменило логото пак")
     for pole in ("tekst", "kod", "zameni", "pozvoleni", "google_fonts"):

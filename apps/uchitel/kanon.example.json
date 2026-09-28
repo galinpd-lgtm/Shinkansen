@@ -23,6 +23,7 @@
     "min_dalzhina": 2,
     "max_dalzhina": 48,
     "vatreshnost": "<span class=\"kg-logo\"><img class=\"kg-logo-znak\" src=\"{znak}\" alt=\"\" width=\"28\" height=\"28\"><span class=\"kg-logo-dumi\"><span class=\"kg-logo-ime\">{tekst}</span><span class=\"kg-logo-kurs\">{kurs}</span></span></span>",
+    "kurs_dvuezichno": "<span class=\"bg-only\">{bg}</span><span class=\"en-only\">{en}</span>",
     "nov_blok": "<span class=\"topbar-brand\">{vatreshnost}</span>",
     "css": ".kg-logo{display:inline-flex;align-items:center;gap:.55rem;text-transform:none;letter-spacing:normal;line-height:1.1}.kg-logo-znak{width:28px;height:28px;flex-shrink:0;display:block}.kg-logo-dumi{display:flex;flex-direction:column}.kg-logo-ime{font-family:'Sora',sans-serif;font-style:italic;font-weight:800;font-size:.95rem;letter-spacing:.04em;color:var(--text,#e2e8f0)}.kg-logo-kurs{font-family:'Sora',sans-serif;font-style:normal;font-weight:400;font-size:.68rem;color:var(--muted2,#94a3b8)}"
   },

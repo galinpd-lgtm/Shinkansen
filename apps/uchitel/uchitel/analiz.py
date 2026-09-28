@@ -92,30 +92,55 @@ def ime_po_papka(k, rel):
     return None
 
 
-def ime_na_kursa(logo, k, rel):
-    """(име, откъде) или (None, защо не). Съмнително име не се гадае — отива за ръчно."""
-    iz = k["izgledi"]
-    chasti = tekst(logo, propusni=lambda d: d.tag in ("title", "desc", "style", "script")
-                   or iz["en_klas"] in d.klasove())
-    surovo = " ".join(" ".join(chasti).split())
+def _ime_ot_tekst(surovo, k):
     for z in k["logo"].get("zapazeni_imena", []):
         if z.lower() in surovo.lower():
-            return z, "от логото"
+            return z
     ime = _chisti(surovo, k)
-    ime = k["logo"].get("imena", {}).get(ime, ime)
+    return k["logo"].get("imena", {}).get(ime, ime)
+
+
+def ime_na_kursa(logo, k, rel):
+    """(име, откъде, английско име или None) или (None, защо не, None). Съмнително име не се гадае.
+
+    Ако старият блок има отделни bg-only/en-only части, английското име се пази за EN изгледа.
+    Ако няма (или там е само „KAGAMI“), българското остава и в двата изгледа."""
+    iz = k["izgledi"]
+    sluzhebni = ("title", "desc", "style", "script")
+    bg = " ".join(" ".join(tekst(logo, propusni=lambda d: d.tag in sluzhebni
+                                  or iz["en_klas"] in d.klasove())).split())
+    ime = _ime_ot_tekst(bg, k)
     if not ime:
         po_papka = ime_po_papka(k, rel)
         if po_papka:
-            return po_papka, "от logo.ime_po_papka"
+            return po_papka, "от logo.ime_po_papka", None
     greshka = _validno(ime, k)
     if greshka:
-        return None, greshka
-    return ime, "от логото"
+        return None, greshka, None
+    en = None
+    if any(iz["en_klas"] in d.klasove() for d in logo.obhod()):
+        surovo = " ".join(" ".join(tekst(logo, propusni=lambda d: d.tag in sluzhebni
+                                         or iz["bg_klas"] in d.klasove())).split())
+        en = _ime_ot_tekst(surovo, k) or None
+        if en is not None:
+            greshka = _validno(en, k)
+            if greshka:
+                return None, "английското име: %s" % greshka, None
+            if en == ime:
+                en = None
+    return ime, "от логото", en
+
+
+def ime_za_pokaz(plan):
+    """„Лаборатория“ или „Лаборатория / Lab“ — за отчета."""
+    en = plan[4] if len(plan) > 4 else None
+    return plan[2] + (" / " + en if en else "")
 
 
 def plan_logo(doc, k, rel):
     """Какво ще стане с логото — едно решение за проверката и за поправката:
-    ("канон",) · ("смени", елемент, име, откъде) · ("добави", лента, име) · ("ръчно", защо)."""
+    ("канон",) · ("смени", елемент, име, откъде, английско име или None) · ("добави", лента, име) ·
+    ("ръчно", защо)."""
     el = nameri_logo(doc, k)
     if el is not None and e_kanonichno(el, k):
         return ("канон",)
@@ -131,10 +156,10 @@ def plan_logo(doc, k, rel):
         return ("ръчно", "блокът на логото е счупен (незатворен таг), ред %d" % (doc.html.count("\n", 0, el.start) + 1))
     if any(e.tag == "a" for e in el.obhod() if e is not el):
         return ("ръчно", "в блока на логото има връзка — смяната би я махнала")
-    ime, otkade = ime_na_kursa(el, k, rel)
+    ime, otkade, en = ime_na_kursa(el, k, rel)
     if ime is None:
         return ("ръчно", "името на курса не може да се извади сигурно: %s" % otkade)
-    return ("смени", el, ime, otkade)
+    return ("смени", el, ime, otkade, en)
 
 
 # ── шрифтове ────────────────────────────────────────────────────────────────────

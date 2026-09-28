@@ -73,7 +73,21 @@ class TestLogo(unittest.TestCase):
             '<span class="brand">n8n Академия</span>',
             '<span class="brand">⬡ KAGAMI <span class="bg-only">Лаборатория</span><span class="en-only">Lab</span></span>')
         plan = analiz.plan_logo(razbor(html), kanon(), "n8n/x.html")
-        self.assertEqual(plan[2], "Лаборатория")
+        self.assertEqual((plan[2], plan[4]), ("Лаборатория", "Lab"))   # английското се пази за EN изгледа
+
+    def test_bez_angliyski_variant_nyama_en(self):
+        self.assertIsNone(analiz.plan_logo(razbor(procheti("gx10/GX_01_Laboratoriya.html")), kanon(), "gx10/x.html")[4])
+        html = procheti("n8n/N8_01_Parvi_potok.html").replace(
+            '<span class="brand">n8n Академия</span>',
+            '<span class="brand"><span class="bg-only">⬡ KAGAMI Лаборатория</span><span class="en-only">⬡ KAGAMI</span></span>')
+        plan = analiz.plan_logo(razbor(html), kanon(), "n8n/x.html")
+        self.assertEqual((plan[2], plan[4]), ("Лаборатория", None))   # в EN частта няма име → българското и в двата
+
+    def test_ednakvo_ime_ne_se_udvoyava(self):
+        html = procheti("n8n/N8_01_Parvi_potok.html").replace(
+            '<span class="brand">n8n Академия</span>',
+            '<span class="brand">KAGAMI <span class="bg-only">GX10</span><span class="en-only">GX10</span></span>')
+        self.assertIsNone(analiz.plan_logo(razbor(html), kanon(), "n8n/x.html")[4])
 
 
 class TestPravila(unittest.TestCase):

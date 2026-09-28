@@ -52,7 +52,7 @@ def logo(doc, k, rel):
     elif plan[0] == "добави":
         r.narushenie("няма лого — ще се сложи „%s · %s“ (от logo.ime_po_papka)" % (t, plan[2]), popravimo=True)
     elif plan[0] == "смени":
-        r.narushenie("старо лого — ще стане „%s · %s“ (%s)" % (t, plan[2], plan[3]), popravimo=True)
+        r.narushenie("старо лого — ще стане „%s · %s“ (%s)" % (t, analiz.ime_za_pokaz(plan), plan[3]), popravimo=True)
     return r
 
 
