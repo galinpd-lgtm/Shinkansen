@@ -47,11 +47,15 @@ export function parseVenue(raw) {
   const skeleton = isObj(raw.skeleton) || (typeof raw.skeleton === 'string' && raw.skeleton) ? raw.skeleton : null;
   if (!model && !skeleton) errors.push('venue: трябва `model` (път до .glb) или `skeleton` (обект или път) — иначе няма какво да се покаже');
 
+  // north_deg: число — потвърден север; null — непотвърден (без компас, слънце и сенки); липсва — 0
   let north = 0;
-  if (raw.north_deg != null) {
+  if (raw.north_deg === null) north = null;
+  else if (raw.north_deg !== undefined) {
     if (isNum(raw.north_deg)) north = raw.north_deg;
-    else errors.push('north_deg: трябва да е число');
+    else errors.push('north_deg: трябва да е число или null (северът не е потвърден)');
   }
+  const description = raw.description != null ? parseText(raw.description) : null;
+  if (raw.description != null && !description) errors.push('description: трябва текст (bg и/или en)');
 
   const camera = { ...DEFAULT_CAMERA };
   if (raw.camera != null) {
@@ -122,9 +126,29 @@ export function parseVenue(raw) {
   }
 
   return {
-    venue: { name, model, skeleton, north_deg: north, camera, roof_nodes: roofNodes, levels, hotspots, explode },
+    venue: { name, description, model, skeleton, north_deg: north, camera, roof_nodes: roofNodes, levels, hotspots, explode },
     errors, warnings,
   };
+}
+
+// ------------------------------------------------------------------ север и страница
+
+/**
+ * Какво следва от north_deg: при число — компас, слънце и сенки както досега; при null (северът не е
+ * потвърден) — нито компас, нито слънце, а в реда за състоянието пише, че северът е непотвърден.
+ */
+export function northPlan(venue, lang = 'bg') {
+  const confirmed = isNum(venue?.north_deg);
+  return {
+    compass: confirmed,
+    sun: confirmed,
+    note: confirmed ? '' : (lang === 'en' ? 'north: unconfirmed' : 'север: непотвърден'),
+  };
+}
+
+/** Заглавие и описание на страница за сграда (site/sgrada.html) — от name и description във venue.json. */
+export function pageMeta(venue, lang = 'bg') {
+  return { title: localText(venue?.name, lang), description: localText(venue?.description, lang) };
 }
 
 // ------------------------------------------------------------------ сметки

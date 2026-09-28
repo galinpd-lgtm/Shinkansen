@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "name": { "bg": "Примерна арена", "en": "Example Arena" },
+  "description": { "bg": "Измислена кръгла арена: входове, каса, паркинг и спирка.", "en": "A made-up round arena: entrances, box office, car park and stop." },
   "model": "model.glb",
   "skeleton": "skeleton.json",
   "north_deg": 0,
