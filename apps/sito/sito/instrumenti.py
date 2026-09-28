@@ -1,13 +1,13 @@
 """Външните инструменти: всеки се открива с shutil.which. Липсата им е причина за „неясно“, не грешка.
 
-Никаква облачна услуга: всичко тук се пуска локално, на същата машина.
+Никаква облачна услуга и никаква имитация на Office: всичко тук се пуска локално, на същата машина.
 """
 import os
 import shutil
 import subprocess
 import time
 
-IMENA = ("pdftotext", "pdfinfo", "pdftoppm", "tesseract", "soffice", "qpdf", "gs")
+IMENA = ("pdftotext", "pdfinfo", "pdftoppm", "tesseract", "antiword", "catdoc", "qpdf", "gs")
 
 
 class Neyasno(Exception):
@@ -19,9 +19,7 @@ def nameri(ime):
 
 
 def nalichni(cfg):
-    n = {i: bool(nameri(i)) for i in IMENA}
-    n["whisper"] = bool(nameri(cfg["whisper"]["komanda"]))
-    return n
+    return {i: bool(nameri(i)) for i in IMENA}
 
 
 def ostava(rok):

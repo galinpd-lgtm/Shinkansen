@@ -1,7 +1,9 @@
 """Общо за тестовете: измислени файлове, създадени по време на теста. Нула мрежа, нула истински документи.
 
+Никъде не се вика LibreOffice или друга имитация на Office.
+
 По подразбиране външните инструменти са „скрити“ (instrumenti.nameri → None), за да не зависи присъдата
-от машината. Тестовете за pdftotext и LibreOffice ги ползват истински и се пропускат, ако ги няма.
+от машината. Тестовете за pdftotext, tesseract и antiword/catdoc ги ползват истински и се пропускат без тях.
 """
 import base64
 import contextlib
@@ -14,7 +16,6 @@ import shutil
 import sys
 import tempfile
 import zipfile
-from email.message import EmailMessage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.dirname(HERE)
@@ -173,37 +174,37 @@ def skaniran_pdf(pat, redove):
         f.write(b.getvalue())
 
 
-def eml(pat, prikacheni):
-    m = EmailMessage()
-    m["Subject"] = "Измислено писмо"
-    m["From"] = "izprashtach@example.com"
-    m["To"] = "poluchatel@example.org"
-    m["Date"] = "Mon, 21 Sep 2026 10:00:00 +0000"
-    m.set_content("Здравей,\n\nприкачвам файловете. Текстът е измислен.\n")
-    for ime, danni in prikacheni:
-        m.add_attachment(danni, maintype="application", subtype="octet-stream", filename=ime)
-    with open(pat, "wb") as f:
-        f.write(m.as_bytes())
-
-
-def kriptiran_zip(pat):
-    """ZIP с член, отбелязан като криптиран (бит 0 на флаговете) — stdlib не пише истинско криптиране."""
-    b = io.BytesIO()
-    with zipfile.ZipFile(b, "w") as z:
-        z.writestr("tayno.txt", "таен текст")
-    d = bytearray(b.getvalue())
-    d[6] |= 1  # локалната заглавка
-    c = d.find(b"PK\x01\x02")
-    d[c + 8] |= 1  # централната директория
-    with open(pat, "wb") as f:
-        f.write(bytes(d))
+def rtf(pat, abzatsi, kartinka_kb=0):
+    """RTF с таблица на шрифтовете, cp1251 (\\'hh), \\uN и по желание вградена картинка (\\pict)."""
+    def kod(t):
+        out = []
+        for ch in t:
+            b = ch.encode("cp1251", "strict") if ch not in "\\{}" else None
+            if ch in "\\{}":
+                out.append("\\" + ch)
+            elif b[0] < 128:
+                out.append(ch)
+            else:
+                out.append("\\'%02x" % b[0])
+        return "".join(out)
+    tyalo = "".join("{\\pard %s\\par}\n" % kod(a) for a in abzatsi)
+    kartinka = ""
+    if kartinka_kb:
+        heks = random.Random(11).randbytes(kartinka_kb * 1024).hex()
+        kartinka = "{\\pict\\pngblip " + "\n".join(heks[i:i + 128] for i in range(0, len(heks), 128)) + "}"
+    with open(pat, "w", encoding="ascii") as f:
+        f.write("{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0 Times New Roman;}}"
+                "{\\colortbl;\\red0\\green0\\blue0;}{\\*\\generator %s;}\n" % kod("Измислен"))
+        f.write("{\\info{\\title %s}}\n" % kod("Скрито заглавие"))
+        f.write(tyalo)
+        f.write("{\\pard \\u1057?\\u1080?\\u1090?\\u1086? \\uc0\\u8212 \\par}\n")
+        f.write(kartinka + "}")
 
 
 def svyat(koren):
-    """Основният измислен свят: всички видове, дубликат, „договор“, ZIP, писмо, неясни."""
-    os.makedirs(os.path.join(koren, "kopiya"))
-    os.makedirs(os.path.join(koren, "rabotni"))
-    os.makedirs(os.path.join(koren, "sabrano"))
+    """Основният измислен свят: всички видове в обхвата, дубликат, „договор“, извън обхвата, чист текст, архив."""
+    for d in ("kopiya", "rabotni", "sabrano", "__MACOSX"):
+        os.makedirs(os.path.join(koren, d))
     golyam_html(os.path.join(koren, "golyam.html"))
     shutil.copyfile(os.path.join(koren, "golyam.html"), os.path.join(koren, "kopiya", "golyam.html"))
     docx(os.path.join(koren, "belezhki.docx"), [ABZAC, dumi(2000, 2)], zaglavie="Бележки от срещата")
@@ -215,24 +216,39 @@ def svyat(koren):
           ("Второ", ["без бележки"], None)])
     pdf(os.path.join(koren, "podpisan.pdf"), ("Signed test document with a text layer long enough",) * 3,
         podpis=True)
-    with open(os.path.join(koren, "rabotni", "plan.txt"), "w", encoding="utf-8") as f:
-        f.write("Жив план: " + dumi(50, 3) + "\n")
+    rtf(os.path.join(koren, "pismo.rtf"), ["Писмо в RTF: " + ABZAC, "Втори абзац {с къдрави скоби}."],
+        kartinka_kb=64)
+    with open(os.path.join(koren, "star.doc"), "wb") as f:  # OLE заглавка без истински Word — за „неясно“
+        f.write(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + bytes(504))
+    with open(os.path.join(koren, "rabotni", "plan.docx"), "wb") as f:
+        b = io.BytesIO()
+        docx(b, ["Жив план: " + dumi(50, 3)])
+        f.write(b.getvalue())
     b = io.BytesIO()
     docx(b, ["Документ в архив: " + dumi(30, 4)])
     with zipfile.ZipFile(os.path.join(koren, "sabrano", "arhiv.zip"), "w") as z:
         z.writestr("vatre/v_arhiv.docx", b.getvalue())
-        with open(os.path.join(koren, "belezhki.docx"), "rb") as f:
-            z.writestr("vatre/belezhki_kopie.docx", f.read())
-    eml(os.path.join(koren, "pismo.eml"), [("belezhka.txt", ("Прикачена бележка. " + dumi(40, 5)).encode())])
-    kriptiran_zip(os.path.join(koren, "zaklyuchen.zip"))
-    with open(os.path.join(koren, "povreden.docx"), "wb") as f:
-        f.write(b"PK\x03\x04" + "това не е истински docx".encode())
+    with open(os.path.join(koren, "sabrano", "stari.7z"), "wb") as f:
+        f.write(b"7z\xbc\xaf\x27\x1c" + bytes(64))
+    with open(os.path.join(koren, "belezhka.md"), "w", encoding="utf-8") as f:
+        f.write("# Бележка\n\nТук споменаваме договора с ЕИК 000000000 и фактура — но това е само бележка.\n")
+    with open(os.path.join(koren, "spisak.txt"), "w", encoding="utf-8") as f:
+        f.write("Списък: " + dumi(40, 5) + "\n")
     with open(os.path.join(koren, "snimka.jpg"), "wb") as f:
         f.write(random.Random(9).randbytes(2048))
+    with open(os.path.join(koren, "tablica.xlsx"), "wb") as f:
+        f.write(b"PK\x03\x04" + random.Random(12).randbytes(1024))
+    with open(os.path.join(koren, "danni.json"), "w", encoding="utf-8") as f:
+        json.dump({"dogovor": "договор", "eik": "ЕИК 000000000"}, f, ensure_ascii=False)
     with open(os.path.join(koren, "zapis.mp3"), "wb") as f:
         f.write(random.Random(10).randbytes(4096))
-    with open(os.path.join(koren, ".DS_Store"), "wb") as f:
-        f.write(b"\0\0")
+    with open(os.path.join(koren, "neshto.xyz"), "wb") as f:
+        f.write(b"?")
+    for ime in (".DS_Store", "._golyam.html", "._dogovor.docx"):  # следи от macOS — пропускат се наистина
+        with open(os.path.join(koren, ime), "wb") as f:
+            f.write(b"\0\5\x16\7" + bytes(60))
+    with open(os.path.join(koren, "__MACOSX", "._podpisan.pdf"), "wb") as f:
+        f.write(b"\0\5\x16\7")
     staro(koren)
 
 
@@ -279,7 +295,7 @@ class Papka:
     """Временна папка: src/ (изходната, само за четене), karta.json, izhod/ и config за теста."""
 
     def __init__(self, svyat_=True, **promeni):
-        self.promeni = dict({"pptx_pdf_izgled": False}, **promeni)
+        self.promeni = promeni
         self.svyat_ = svyat_
 
     def __enter__(self):
@@ -308,6 +324,18 @@ class Papka:
         kod, out, err = self.hod("skanirai", self.src, "--izhod", self.karta)
         assert kod == 0, err
         return self.k()
+
+    def vidyah(self, *idta, rolya=ROLYA):
+        kod, out, err = self.hod("vidyah", self.karta, *idta, "--ot", rolya)
+        assert kod == 0, err
+        return out
+
+    def vidyah_vsichki(self, prisada=None):
+        """Човекът е видял всички файлове (или само от присъдата) — по id, един по един."""
+        idta = [z["id"] for z in self.k()["faylove"]
+                if z["prisada"] not in ("dublikat", "neyasno", "izvan_obhvat", "chist_tekst", "arhiv")
+                and (prisada is None or z["prisada"] == prisada)]
+        return self.vidyah(*idta) if idta else ""
 
     def k(self):
         with open(self.karta, encoding="utf-8") as f:

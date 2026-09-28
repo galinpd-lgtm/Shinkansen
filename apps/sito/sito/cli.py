@@ -1,9 +1,9 @@
-"""python -m sito skanirai | karta | reshi | preobrazuvay | otchet
+"""python -m sito skanirai | karta | vidyah | reshi | preobrazuvay | otchet
 
 Кодове на изход:
   0 готово (и когато файл е „неясно“ — то е записано, не е грешка на програмата)
   1 грешка (липсваща папка, неразбираема карта или config, непознат id, празен клас)
-  2 грешна употреба (вкл. решение без роля или с роля извън config, изход вътре в изходната папка)
+  2 грешна употреба (вкл. преглед или решение без роля или с роля извън config, изход вътре в изходната папка)
 """
 import argparse
 import json
@@ -12,7 +12,7 @@ import sys
 from datetime import datetime, timezone
 
 from . import config, karta, otchet, preobrazuvay
-from .skaner import Skaner
+from .skaner import Skaner, hash_i_baytove, prenesi
 
 IZHOD_OK, IZHOD_GRESHKA, IZHOD_UPOTREBA = 0, 1, 2
 
@@ -61,6 +61,10 @@ def parser():
     k.add_argument("karta")
     k.add_argument("--format", choices=("md", "html", "csv"), default="md")
     k.add_argument("--izhod", help="файл (иначе на екрана)")
+    v = sub.add_parser("vidyah", parents=[obshti], help="човекът е видял файла — само с роля, само по id")
+    v.add_argument("karta")
+    v.add_argument("idta", nargs="+", metavar="id", help="един или повече id (и със запетаи)")
+    v.add_argument("--ot", help="ролята (не името) на човека, който е видял файла")
     r = sub.add_parser("reshi", parents=[obshti], help="решение за цял клас или за един файл — само човек, с роля")
     r.add_argument("karta")
     koe = r.add_mutually_exclusive_group(required=True)
@@ -133,6 +137,13 @@ def skanirai(a, cfg, sega):
         raise Greshka("няма такава папка: %s" % a.papka)
     _ne_vav_izvora(a.izhod, a.papka, "картата")
     k = Skaner(a.papka, cfg, sega).pusni()
+    stara = None
+    if os.path.exists(a.izhod):
+        try:
+            stara = karta.zaredi(a.izhod)
+        except karta.GreshkaKarta:
+            stara = None
+    preneseni, izgubeni = prenesi(stara, k)
     karta.zapishi(a.izhod, k)
     broy = {}
     for z in k["faylove"]:
@@ -141,10 +152,48 @@ def skanirai(a, cfg, sega):
     for pr in karta.REDA:
         if pr in broy:
             print("  %-14s %d" % (pr, broy[pr]))
+    if preneseni or izgubeni:
+        print("  от предишната карта: %d прегледа остават; %d файла са невидени отново (променени или с друга присъда)"
+              % (preneseni, izgubeni))
+    if k["propusnati"]["dalbochina"]:
+        print("  пропуснати заради дълбочината (над %d папки): %d" % (k["maks_dalbochina"],
+                                                                      k["propusnati"]["dalbochina"]))
     lipsvat = [i for i, ok in k["instrumenti"].items() if not ok]
     if lipsvat:
         print("  липсващи инструменти: %s" % ", ".join(lipsvat))
     return "skanirai %d · %s" % (len(k["faylove"]), ", ".join("%s %d" % kv for kv in sorted(broy.items())))
+
+
+def vidyah(a, cfg, sega):
+    """Прегледът е на човек и е за конкретен файл: роля, време и SHA-256 на видяното. Никога партидно."""
+    rolya = _rolya(cfg, a.ot)
+    k = karta.zaredi(a.karta)
+    po_id = {z["id"]: z for z in k["faylove"]}
+    idta = [i for x in a.idta for i in x.split(",") if i.strip()]
+    lipsvat = [i for i in idta if i not in po_id]
+    if lipsvat:
+        raise Greshka("няма такива id в картата: %s — нищо не е записано" % ", ".join(lipsvat))
+    t, n = _t(sega), 0
+    for i in dict.fromkeys(idta):
+        z = po_id[i]
+        if z["prisada"] in preobrazuvay.NEPREOBRAZUVAEMI:
+            print("  %s: %s — няма какво да се прегледа за действие" % (z["put"], z["prisada"]))
+            continue
+        try:
+            sha, _ = hash_i_baytove(os.path.join(k["koren"], z["put"]), z["vid"], cfg)
+        except OSError as e:
+            print("  %s: не се чете (%s) — не е отбелязан" % (z["put"], e))
+            continue
+        if sha != z["sha256"]:
+            print("  %s: променен след сканирането — не е отбелязан; сканирай наново" % z["put"])
+            continue
+        z["vidyan"] = {"rolya": rolya, "t": t, "sha256": sha}
+        z["spryan"] = None
+        n += 1
+        print("  %s: видян от %s" % (z["put"], rolya))
+    karta.zapishi(a.karta, k)
+    print("Видени %d от %d" % (n, len(idta)))
+    return "vidyah %d" % n
 
 
 def reshi(a, cfg, sega):
@@ -162,7 +211,7 @@ def reshi(a, cfg, sega):
         nachin = "klas"
     t, n, propusnati = _t(sega), 0, 0
     for z in izbrani:
-        if a.da and z["prisada"] in preobrazuvay.NEPREOBRAZUVAEMI:
+        if z["prisada"] in config.SAMO_UVEDOMYAVAT or (a.da and z["prisada"] in preobrazuvay.NEPREOBRAZUVAEMI):
             propusnati += 1
             continue
         z["reshenie"] = {"da": bool(a.da), "rolya": rolya, "t": t, "nachin": nachin,
@@ -170,7 +219,8 @@ def reshi(a, cfg, sega):
         n += 1
     karta.zapishi(a.karta, k)
     print("Решение „%s“ от %s за %d файла%s" % ("да" if a.da else "не", rolya, n,
-                                             (" (пропуснати %d: дубликат/неясно/контейнер — там нищо не се прави)"
+                                             (" (пропуснати %d: там нищо не се прави — дубликат, неясно, "
+                                              "извън обхвата, чист текст, архив)"
                                               % propusnati) if propusnati else ""))
     return "reshi %s %d" % ("da" if a.da else "ne", n)
 
@@ -182,6 +232,8 @@ def izpalni(a):
         return skanirai(a, cfg, sega)
     if a.komanda == "reshi":
         return reshi(a, cfg, sega)
+    if a.komanda == "vidyah":
+        return vidyah(a, cfg, sega)
     k = karta.zaredi(a.karta)
     if a.komanda == "karta":
         tekst = {"md": karta.md, "html": karta.html_, "csv": karta.csv_}[a.format](k)
@@ -195,10 +247,10 @@ def izpalni(a):
     if not a.go:
         preobrazuvay.plan(k, a.izhod, cfg)
         return "preobrazuvay plan"
-    ok, chunks = preobrazuvay.go(k, a.izhod, cfg, _t(sega))
-    if ok:
+    ok, chunks, spreni = preobrazuvay.go(k, a.izhod, cfg, _t(sega))
+    if ok or spreni:
         karta.zapishi(a.karta, k)
-    return "preobrazuvay go %d · chunks %d" % (ok, chunks)
+    return "preobrazuvay go %d · chunks %d · spreni %d" % (ok, chunks, spreni)
 
 
 def main(argv=None):
