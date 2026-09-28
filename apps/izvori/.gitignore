@@ -1,0 +1,7 @@
+# частните файлове живеят само на GX10 (само в корена на приложението)
+/config.json
+/izvori.json
+/izvori_filtar.json
+/dokazatelstva/
+/otchet*.md
+/otchet*.csv
