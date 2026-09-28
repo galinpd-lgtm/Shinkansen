@@ -1,0 +1,8 @@
+# частните файлове живеят само на GX10 (само в корена на приложението)
+/config.json
+/karta*.json
+/karta*.md
+/karta*.html
+/karta*.csv
+/izhod/
+/otchet*.md

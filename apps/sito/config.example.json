@@ -1,0 +1,83 @@
+{
+  "roli_reshavashti": ["собственик на архива", "пазител на архива"],
+
+  "maks_razmer_bytes": 4294967296,
+  "maks_vreme_s": 600,
+  "maks_dalbochina": 64,
+  "blok_bytes": 1048576,
+  "chunk_dumi": 800,
+  "otkas_znaci": 2000,
+
+  "propuskay": [".DS_Store", "._*", "Thumbs.db", "desktop.ini", ".~lock.*", "~$*", "Icon\r"],
+  "propuskay_papki": ["__MACOSX", ".Trashes", ".Spotlight-V100", ".fseventsd", ".git"],
+
+  "vidove": {
+    "html": [".html", ".htm", ".xhtml"],
+    "docx": [".docx"],
+    "doc":  [".doc"],
+    "rtf":  [".rtf"],
+    "pdf":  [".pdf"],
+    "pptx": [".pptx"]
+  },
+
+  "chist_tekst": [".txt", ".md"],
+
+  "arhiv": [".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".zst"],
+
+  "izvan_obhvat": {
+    "snimka":  [".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".tif", ".tiff", ".bmp", ".svg"],
+    "tablica": [".xlsx", ".xls", ".ods", ".csv"],
+    "danni":   [".json", ".xml", ".yaml", ".yml"],
+    "video":   [".mp4", ".mkv", ".mov", ".webm", ".avi"],
+    "audio":   [".mp3", ".wav", ".m4a", ".ogg", ".flac"],
+    "pismo":   [".eml", ".msg"],
+    "ppt":     [".ppt"]
+  },
+
+  "opakovka": {
+    "vidove": ["html", "pptx", "pdf"],
+    "prag_tekst_kam_razmer": 0.2
+  },
+
+  "dokazatelstvo": {
+    "vidove": ["pdf", "docx", "doc", "rtf"],
+    "dumi": ["договор", "фактура", "подпис", "печат", "възложител", "изпълнител", "управител",
+             "contract", "invoice", "signature", "signed"],
+    "min_dumi": 2,
+    "regeksi": [
+      {"ime": "ЕИК/БУЛСТАТ номер", "re": "(?i)(ЕИК|БУЛСТАТ)\\W{0,6}\\d{9}(\\d{4})?(?!\\d)"},
+      {"ime": "ДДС номер", "re": "(?<![A-Z0-9])BG\\d{9,10}(?!\\d)"}
+    ],
+    "pdf_podpis_markeri": ["/FT /Sig", "/FT/Sig", "/Type /Sig", "/Type/Sig", "/ByteRange"]
+  },
+
+  "zhiv": {
+    "patishta": ["*/tekushti/*", "*/rabotni/*", "tekushti/*", "rabotni/*"],
+    "promenen_predi_dni": 30
+  },
+
+  "html": {
+    "propuskay_elementi": ["script", "style", "noscript", "svg", "nav", "template", "iframe", "canvas",
+                           "object", "math"]
+  },
+
+  "ocr": {
+    "ezici": "bul+eng",
+    "dpi": 200,
+    "prag_znaci_na_stranica": 25,
+    "pri_skanirane": false
+  },
+
+  "predlozheniya": {
+    "opakovka": "MD + chunks; оригиналът е кандидат за студен архив — само след отделно „да“",
+    "dokazatelstvo": "остава оригиналът; MD до него в изхода",
+    "zhiv": "само MD в базата; файлът не се пипа",
+    "tekst": "MD + chunks; оригиналът остава, където е",
+    "dublikat": "нищо — сочи към първия",
+    "neyasno": "само се записва",
+    "izvan_obhvat": "не се работи от Сито — само се отбелязва",
+    "chist_tekst": "вече е текст — нищо не се преобразува",
+    "arhiv": "разархивирай първо, после сканирай папката",
+    "pptx_pdf": "кандидат за PDF (Canva) — ръчна стъпка извън Сито"
+  }
+}
