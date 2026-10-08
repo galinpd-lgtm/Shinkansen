@@ -1,0 +1,24 @@
+{
+  "papka_rezultati": "rezultati",
+  "user_agent_ime": "oditor",
+  "kontakt": "https://github.com/galinpd-lgtm/Shinkansen/blob/main/apps/oditor/METHODOLOGY.md",
+  "taymaut_s": 20,
+  "pauza_na_hosta_s": 2,
+  "pauza_mezhdu_saytove_s": 10,
+  "maks_prenasochvaniya": 5,
+  "maks_tyalo_bytes": 1500000,
+  "proba_s_ai_ua": false,
+  "brauzar": {"vklyuchen": true, "taymaut_s": 30},
+  "izklyucheni": ["opt-out.example.net"],
+  "dosieta": {
+    "example.com": {"telefon": "+359 2 000 0000", "adres": "ул. Примерна 1"}
+  },
+  "model": {
+    "ollama_url": "http://127.0.0.1:11434",
+    "gate_url": null,
+    "taymaut_s": 180,
+    "rabotnik": {"ime": "gemma4"},
+    "pazach": {"ime": "nemotron-3-super"},
+    "visok_risk": {"ime": "mistral-small-4"}
+  }
+}

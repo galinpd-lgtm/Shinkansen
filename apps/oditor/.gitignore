@@ -1,0 +1,6 @@
+# частните файлове живеят само на машината (само в корена на приложението)
+/config.json
+/rezultati/
+/spisak*.txt
+/otchet*.md
+/otchet*.json
