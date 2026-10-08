@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "otgovor.schema.json",
+  "title": "Отговор на мисия",
+  "description": "Гражданско наблюдение до потвърждение. Местоположението е само районът; никакви данни за хора.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["misiya_id", "rayon", "stoynosti", "avtor", "uchastie", "sazdaden"],
+  "properties": {
+    "misiya_id": {"type": "string", "pattern": "^m-[a-z0-9-]+$", "maxLength": 120},
+    "rayon": {"type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 60},
+    "stoynosti": {"type": "object", "maxProperties": 8,
+                  "additionalProperties": {"type": ["string", "boolean"], "maxLength": 2000}},
+    "snimki": {"$ref": "snimki.schema.json"},
+    "avtor": {"$ref": "avtor.schema.json"},
+    "uchastie": {"$ref": "uchastie.schema.json"},
+    "litsenz": {"enum": ["CC-BY-4.0", "CC0-1.0", null]},
+    "s_ai": {"type": "boolean"},
+    "sazdaden": {"type": "string", "format": "date"}
+  }
+}

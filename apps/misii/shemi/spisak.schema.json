@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "spisak.schema.json",
+  "title": "Списък с мисии за район",
+  "description": "Статичен JSON по район. Помощникът проверява подписа и всяка мисия; не изпълнява нищо, дошло отвън.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rayon", "izdaden", "versiya", "misii"],
+  "properties": {
+    "rayon": {"type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 60},
+    "izdaden": {"type": "string", "format": "date"},
+    "versiya": {"type": "string", "maxLength": 20},
+    "oblasti": {"type": "array", "items": {"enum": ["kultura", "sport", "turizam", "obrazovanie", "sabitiya", "npo", "msp"]}},
+    "misii": {"type": "array", "maxItems": 5000, "items": {"$ref": "misiya.schema.json"}},
+    "podpis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algoritam", "klyuch_id", "stoynost"],
+      "properties": {
+        "algoritam": {"const": "HMAC-SHA256"},
+        "klyuch_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$", "maxLength": 60},
+        "stoynost": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+{"id": "m-primer-grad-centar-101-direktor", "rayon": "primer-grad-centar", "oblast": "kultura",
+ "vid": "mnenie", "obekt": {"id": 101, "ime": "Читалище", "direktor": "Име Фамилия"},
+ "vapros": "Какво мислите за директора?", "poleta": ["mnenie"], "validna_do": "2026-11-23"}

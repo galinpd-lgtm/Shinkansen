@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "avtor.schema.json",
+  "title": "Автор",
+  "description": "Човекът избира: без подпис, псевдоним или име. Нищо повече за него.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["podpis"],
+  "properties": {
+    "podpis": {"enum": ["anonimno", "psevdonim", "ime"]},
+    "ime": {"type": "string", "minLength": 1, "maxLength": 80}
+  }
+}

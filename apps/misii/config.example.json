@@ -1,0 +1,86 @@
+{
+  "rayoni": {
+    "primer-grad-centar": {"ime": "Примерен град — център"},
+    "primer-selo": {"ime": "Примерно село"}
+  },
+  "validna_dni": 45,
+  "srok_proverka_dni": 365,
+  "maks_misii_na_rayon": 200,
+  "podpis": {"algoritam": "HMAC-SHA256", "klyuch_id": "proba-1", "klyuch_env": "MISII_KLYUCH"},
+  "obshti_adresi": ["info", "office", "contact", "kontakt", "hello", "secretary", "sekretar", "chitalishte",
+                    "npo", "press", "tickets", "bileti", "kasa"],
+  "oblasti": {
+    "kultura": {
+      "ime": "Култура",
+      "tipove": ["chitalishte", "muzey", "galeriya", "biblioteka", "stsena", "pametnik"],
+      "poleta": {
+        "rabotno_vreme": {"vid": "rabotno_vreme", "vapros": "Какво е работното време? Снимай надписа на входа.",
+                          "poleta": ["rabotno_vreme", "snimka_nadpis"]},
+        "shkoli": {"vid": "lichen_prinos", "vapros": "Какви школи и състави има? Напиши ги с няколко думи.",
+                   "poleta": ["tekst"], "samo_tipove": ["chitalishte"]},
+        "snimka_fasada": {"vid": "snimka", "vapros": "Снимай фасадата отпред, без хора в кадър.",
+                          "poleta": ["snimka"]}
+      }
+    },
+    "sport": {
+      "ime": "Спорт",
+      "tipove": ["zala", "igrishte", "ploshtadka", "baseyn", "klub"],
+      "poleta": {
+        "sastoyanie": {"vid": "sastoyanie", "vapros": "Изправна ли е площадката? Отбележи и снимай, без хора в кадър.",
+                       "poleta": ["sastoyanie", "snimka"], "samo_tipove": ["igrishte", "ploshtadka"]},
+        "svoboden_dostap": {"vid": "dostapnost", "vapros": "Достъпна ли е свободно, или само с членство или такса?",
+                            "poleta": ["dostapnost"]},
+        "detski_grupi": {"vid": "lichen_prinos", "vapros": "Кои клубове тренират тук деца и за каква възраст? Само клубове, без имена на хора.",
+                         "poleta": ["tekst"], "samo_tipove": ["zala", "klub"]}
+      }
+    },
+    "turizam": {
+      "ime": "Туризъм",
+      "tipove": ["zabelezhitelnost", "pateka", "cheshma", "zaslon", "plazh", "info_tsentar"],
+      "poleta": {
+        "dostapnost": {"vid": "dostapnost", "vapros": "Може ли да се стигне до обекта? Има ли рампа или стъпала?",
+                       "poleta": ["dostapnost"]},
+        "tabela": {"vid": "sastoyanie", "vapros": "Има ли табела? Снимай я.", "poleta": ["sastoyanie", "snimka"]},
+        "snimka": {"vid": "snimka", "vapros": "Актуална снимка на обекта, без хора и номера на коли.", "poleta": ["snimka"]}
+      }
+    },
+    "obrazovanie": {
+      "ime": "Образование",
+      "tipove": ["uchilishte", "detska_gradina", "shkola", "biblioteka"],
+      "poleta": {
+        "izvanklasni": {"vid": "lichen_prinos", "vapros": "Кои извънкласни занимания са отворени и за външни деца? Без данни за деца.",
+                        "poleta": ["tekst"]}
+      }
+    },
+    "sabitiya": {
+      "ime": "Събития (Bravoto)",
+      "tipove": ["chitalishte", "klub", "selo_ploshtad"],
+      "poleta": {
+        "afish": {"vid": "mestno_sabitie", "vapros": "Има ли местно събитие този месец? Какво, кога, къде и коя организация го прави.",
+                  "poleta": ["kakvo", "koga", "kade", "organizator"]}
+      }
+    },
+    "npo": {
+      "ime": "НПО",
+      "tipove": ["sdruzhenie", "fondatsiya", "nastoyatelstvo"],
+      "poleta": {
+        "deynost": {"vid": "lichen_prinos", "vapros": "С какво се занимава организацията? С няколко думи.", "poleta": ["tekst"]},
+        "obsht_kontakt": {"vid": "lichen_prinos", "vapros": "Публичен общ контакт на организацията (общ имейл или страница, не личен).",
+                          "poleta": ["obsht_kontakt"]},
+        "nuzhdi": {"vid": "nuzhdi_npo", "vapros": "От какво има нужда организацията: доброволци, помещение, техника?",
+                   "poleta": ["nuzhdi"]}
+      }
+    },
+    "msp": {
+      "ime": "МСП",
+      "tipove": ["proizvoditel", "zanayatchiya", "semeen_biznes"],
+      "poleta": {
+        "rabotno_vreme": {"vid": "rabotno_vreme", "vapros": "Какво е работното време? Снимай надписа на входа.",
+                          "poleta": ["rabotno_vreme", "snimka_nadpis"]},
+        "stranitsa": {"vid": "lichen_prinos", "vapros": "Има ли сайт или страница? Само адреса, без оценки.", "poleta": ["url"]},
+        "predlaga": {"vid": "lichen_prinos", "vapros": "Какво предлага? С няколко думи, без оценки.", "poleta": ["tekst"]}
+      }
+    }
+  },
+  "osm_atributsiya": "© участниците в OpenStreetMap, ODbL 1.0 — https://www.openstreetmap.org/copyright"
+}
