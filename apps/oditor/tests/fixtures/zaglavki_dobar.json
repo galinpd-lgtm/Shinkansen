@@ -1,0 +1,6 @@
+{
+  "content-type": "text/html; charset=utf-8",
+  "strict-transport-security": "max-age=31536000",
+  "content-security-policy": "default-src 'self'",
+  "x-content-type-options": "nosniff"
+}
