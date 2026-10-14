@@ -8,6 +8,7 @@
 |---|---|---|
 | [`weather-now`](weather-now/SKILL.md) | „Вали ли сега“: няколко безплатни източника + METAR по ICAO | чете |
 | [`pdf-contact-sheet`](pdf-contact-sheet/SKILL.md) | всички страници на PDF в една картинка-мрежа с номера | чернови |
+| [`pdf-redact`](pdf-redact/SKILL.md) | истинско заличаване на ЕГН/ЛНЧ/IBAN/телефони/имейли в PDF + одит за фалшиво заличаване (двигател PdfCraft) | чернови |
 | [`leak-filter`](leak-filter/SKILL.md) | изтичания в папка и в цялата git история; само докладва | чете |
 | [`pr-live-check`](pr-live-check/SKILL.md) | pull request в отделна папка → тестове → отчет до 20 реда; не слива | чете |
 | [`share-single-file`](share-single-file/SKILL.md) | HTML + локалните му JS/CSS/данни → един файл без сървър | чернови |
