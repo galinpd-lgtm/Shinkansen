@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "misiya.schema.json",
+  "title": "Мисия",
+  "description": "Една малка мисия за обект в района. Данни, никога код. Без въпроси за хора.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "rayon", "oblast", "vid", "obekt", "vapros", "poleta", "validna_do"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^m-[a-z0-9-]+$", "maxLength": 120},
+    "rayon": {"type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 60},
+    "oblast": {"enum": ["kultura", "sport", "turizam", "obrazovanie", "sabitiya", "npo", "msp"]},
+    "vid": {"enum": ["raboti_li", "rabotno_vreme", "sastoyanie", "dostapnost", "snimka", "nov_obekt",
+                     "mestno_sabitie", "nuzhdi_npo", "lichen_prinos"]},
+    "obekt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ime"],
+      "properties": {
+        "id": {"type": ["integer", "string"]},
+        "ime": {"type": "string", "minLength": 1, "maxLength": 200},
+        "tip": {"type": "string", "pattern": "^[a-z_]+$"},
+        "adres": {"type": "string", "maxLength": 300},
+        "lat": {"type": "number", "minimum": -90, "maximum": 90},
+        "lon": {"type": "number", "minimum": -180, "maximum": 180},
+        "url": {"type": "string", "pattern": "^https://", "maxLength": 500}
+      }
+    },
+    "vapros": {"type": "string", "minLength": 5, "maxLength": 300},
+    "poleta": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "pattern": "^[a-z_]+$"}},
+    "pole": {"type": "string", "pattern": "^[a-z_]+$"},
+    "prichina": {"enum": ["lipsva_pole", "iztekla_proverka", "karta_bez_registar", "registar_bez_karta"]},
+    "validna_do": {"type": "string", "format": "date"}
+  }
+}

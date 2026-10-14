@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "snimki.schema.json",
+  "title": "Снимки",
+  "description": "Само името на файла и отпечатъкът му. Лицата и номерата се размазват преди изпращане.",
+  "type": "array",
+  "maxItems": 5,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["fayl", "sha256"],
+    "properties": {
+      "fayl": {"type": "string", "pattern": "^[A-Za-z0-9._-]+\\.(jpg|jpeg|png|webp)$", "maxLength": 120},
+      "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "razmazani": {"type": "boolean"}
+    }
+  }
+}

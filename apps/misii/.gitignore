@@ -1,0 +1,7 @@
+# частните файлове живеят само на машината (само в корена на приложението)
+/config.json
+/baza*.json
+/misii_*.json
+/pratki/
+/opashka/
+/iznos/

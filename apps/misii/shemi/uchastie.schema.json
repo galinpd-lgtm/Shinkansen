@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "uchastie.schema.json",
+  "title": "Участие",
+  "description": "Само пълнолетни; до 18 г. — през родител или учител. Без възраст и без данни за детето.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "palnoleten": {"type": "boolean"},
+    "prez": {"enum": ["roditel", "uchitel"]}
+  }
+}

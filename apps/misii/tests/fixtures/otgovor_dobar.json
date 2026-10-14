@@ -1,0 +1,5 @@
+{"misiya_id": "m-primer-grad-centar-101-rabotno-vreme", "rayon": "primer-grad-centar",
+ "stoynosti": {"rabotno_vreme": "пн–пт 9–19, сб 10–14"},
+ "snimki": [{"fayl": "nadpis-101.jpg", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "razmazani": true}],
+ "avtor": {"podpis": "psevdonim", "ime": "Примерен съсед"}, "uchastie": {"palnoleten": true},
+ "litsenz": null, "s_ai": true, "sazdaden": "2026-10-09"}
