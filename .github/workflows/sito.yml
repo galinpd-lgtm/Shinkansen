@@ -1,0 +1,52 @@
+# Сито (apps/sito) — тестовете при всеки pull request и push в main, които пипат Сито.
+# Само чете репото: без мрежа в тестовете, без тайни, без запис обратно.
+# Инструментите (pdftotext, pdftoppm, tesseract с bul, antiword) се слагат, за да вървят и тестовете за
+# текстов и сканиран PDF и за DOC — без тях те се пропускат. Никакъв офис пакет.
+name: Сито — тестове
+
+on:
+  pull_request:
+    paths:
+      - "apps/sito/**"
+      - ".github/workflows/sito.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/sito/**"
+      - ".github/workflows/sito.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sito-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/sito
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Инструменти (poppler, tesseract bul+eng, antiword)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            poppler-utils tesseract-ocr tesseract-ocr-bul tesseract-ocr-eng antiword
+          pdftotext -v 2>&1 | head -1
+          tesseract --list-langs
+
+      - name: Тестове (без мрежа), и нищо пропуснато
+        # С инструментите горе всички тестове трябва да вървят; пропуснат тест значи липсващ инструмент.
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s tests -v 2>&1 | tee "$RUNNER_TEMP/sito.log"
+          if grep -E "\.\.\. skipped" "$RUNNER_TEMP/sito.log"; then
+            echo "::error::Има пропуснати тестове — липсва инструмент в CI."
+            exit 1
+          fi

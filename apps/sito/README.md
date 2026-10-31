@@ -198,6 +198,10 @@ python3 -m sito otchet karta.json [--izhod F]                             # пр
 cd apps/sito && python3 -m unittest discover -s tests -v
 ```
 
+В CI ([`.github/workflows/sito.yml`](../../.github/workflows/sito.yml)) тестовете вървят при всеки pull request
+и push в main, които пипат `apps/sito`. Там се слагат poppler, tesseract (bul + eng) и antiword, затова нито
+един тест не бива да е пропуснат — пропуснат тест проваля проверката.
+
 Нула мрежа, всичко измислено и създадено по време на теста: голям HTML с CSS/JS/base64, DOCX, PPTX с бележки,
 RTF с картинка и cp1251, подписан PDF, „договор“, ZIP и 7z, снимка, XLSX, JSON, аудио, TXT и MD (едното с
 „договор“ и ЕИК), следи от macOS. Покрити са: PPTX не е кандидат за PDF, докато човек не го избере (само по
