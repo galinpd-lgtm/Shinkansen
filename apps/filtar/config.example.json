@@ -53,6 +53,7 @@
     "maks_na_rubrika": 3,
     "maks_na_izvor": 3,
     "okno_dni": 2,
+    "okno_maks_dni": 14,
     "radar_dni": 30,
     "publichni_osi": false,
     "zaglavie": "Радар — KAGAMI",

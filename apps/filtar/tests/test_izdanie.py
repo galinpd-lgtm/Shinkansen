@@ -40,6 +40,31 @@ class TestChernova(unittest.TestCase):
                                       (z["id"],)).fetchone()
                 self.assertIsNotNone(red, "запис %d няма причина" % z["id"])
 
+    def test_prozorecat_trugva_ot_poslednata_chernova(self):
+        """Пропуснати сутрини не губят записите си: прозорецът е от деня след последната чернова."""
+        sled = DEN + timedelta(days=2)  # 07.10; записите в примерите са от 04.10 и 05.10
+        with Papka() as p:
+            podgotvi(p)
+            d, _ = izd.chernova(p.b, cfg(), sled, p.danni, SEGA)
+            self.assertEqual(d["zapisi"], [])  # без предишна чернова: само okno_dni (06–07.10)
+            self.assertFalse(d["okno_razshireno"])
+        with Papka() as p:
+            podgotvi(p)
+            with open(os.path.join(p.danni, "chernova_2026-10-03.json"), "w", encoding="utf-8") as f:
+                json.dump({"data": "2026-10-03"}, f)
+            d, pj = izd.chernova(p.b, cfg(), sled, p.danni, SEGA)
+            self.assertEqual(d["okno_ot"], "2026-10-04")
+            self.assertTrue(d["okno_razshireno"])
+            self.assertGreater(len(d["zapisi"]), 0)
+            with open(pj.replace(".json", ".md"), encoding="utf-8") as f:
+                self.assertIn("Прозорецът е от 2026-10-04", f.read())
+            # таванът: най-много okno_maks_dni назад, колкото и стара да е последната чернова
+            c = cfg()
+            c["izdanie"]["okno_maks_dni"] = 3
+            self.assertEqual(izd.okno(c, sled, p.danni), date(2026, 10, 5))
+            # отметката само разширява: по-късна чернова (07.10) не стеснява прозореца под okno_dni
+            self.assertEqual(izd.okno(cfg(), DEN, p.danni), date(2026, 10, 4))
+
     def test_pravila_na_podbora(self):
         with Papka() as p:
             podgotvi(p)

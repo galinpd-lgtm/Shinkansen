@@ -15,7 +15,7 @@ import glob
 import json
 import os
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from . import VERSIYA, baza
 from .dov import SISTEMA, GreshkaSadarzhanie, chisto, izrecheniya
@@ -35,9 +35,32 @@ def rubriki(cfg):
 
 # ─────────── слой 7: подбор ───────────
 
-def kandidati(b, cfg, den):
+def posledna_chernova(papka, den):
+    """Датата на последната чернова преди den (по файловете chernova_<дата>.json) или None."""
+    dati = []
+    for p in glob.glob(os.path.join(papka or "", "chernova_*.json")):
+        try:
+            d = date.fromisoformat(os.path.basename(p)[len("chernova_"):-len(".json")])
+        except ValueError:
+            continue
+        if d < den:
+            dati.append(d)
+    return max(dati) if dati else None
+
+
+def okno(cfg, den, papka=None):
+    """Първият ден на прозореца: от деня след последната чернова (отметка), но поне okno_dni назад и не
+    повече от okno_maks_dni. Пропуснати сутрини (заета машина, спрян GX10) не губят записите си тихо."""
     ic = cfg["izdanie"]
-    ot = (den - timedelta(days=ic["okno_dni"] - 1)).isoformat()
+    ot = den - timedelta(days=ic["okno_dni"] - 1)
+    posledna = posledna_chernova(papka, den) if papka else None
+    if posledna is not None:
+        ot = min(ot, max(posledna + timedelta(days=1), den - timedelta(days=ic.get("okno_maks_dni", 14) - 1)))
+    return ot
+
+
+def kandidati(b, cfg, den, papka=None):
+    ot = okno(cfg, den, papka).isoformat()
     do = den.isoformat()
     return b.execute("SELECT z.*, i.rep_score FROM zapisi z LEFT JOIN izvori i ON i.id=z.izvor "
                      "WHERE z.sastoyanie='obraboten' AND z.reshenie IN (?,?) AND z.odobren IS NULL "
@@ -47,13 +70,13 @@ def kandidati(b, cfg, den):
                      TIPOVE_ZA_PUBLIKUVANE + (ot, do, ot, do, TIPOVE_ZA_PUBLIKUVANE[0])).fetchall()
 
 
-def podberi(b, cfg, den):
+def podberi(b, cfg, den, papka=None):
     """→ (подбрани, за сведение, [(запис, причина)] отпаднали на слой 7).
 
     Местата (maks_na_den) са само за ПРОПУСНИ. ПРЕДУПРЕДИ отиват „за сведение“ — вътрешно, без да заемат място."""
     ic = cfg["izdanie"]
     izbrani, za_svedenie, otpadnali, po_rub, po_izv = [], [], [], {}, {}
-    for z in kandidati(b, cfg, den):
+    for z in kandidati(b, cfg, den, papka):
         if z["reshenie"] != TIPOVE_ZA_PUBLIKUVANE[0]:
             za_svedenie.append(z)
             otpadnali.append((z, "ПРЕДУПРЕДИ — само за сведение, не заема място в изданието"))
@@ -163,8 +186,9 @@ def neprocheteni(b, sega):
 
 
 def chernova(b, cfg, den, papka, sega, model=None):
-    izbrani, za_svedenie, otpadnali = podberi(b, cfg, den)
+    izbrani, za_svedenie, otpadnali = podberi(b, cfg, den, papka)
     ne_izvori, posledno = neprocheteni(b, sega)
+    ot = okno(cfg, den, papka)
     zapisi = []
     for i, z in enumerate(izbrani, 1):
         kakvo, znachi = tekstove(model, z) if model is not None else ("", "")
@@ -175,7 +199,8 @@ def chernova(b, cfg, den, papka, sega, model=None):
         baza.log(b, vreme, 7, "НЕ Е ПОДБРАН", "%s (чернова %s)" % (prichina, den.isoformat()), z["id"], z["izvor"],
                  z["ocenka"])
     b.commit()
-    d = {"versiya": VERSIYA, "data": den.isoformat(), "sazdadena": vreme,
+    d = {"versiya": VERSIYA, "data": den.isoformat(), "sazdadena": vreme, "okno_ot": ot.isoformat(),
+         "okno_razshireno": ot < den - timedelta(days=cfg["izdanie"]["okno_dni"] - 1),
          "s_model": model is not None, "zapisi": zapisi,
          "za_svedenie": svedenie,
          "otpadnali_na_sloy7": len(otpadnali) - len(svedenie),
@@ -203,6 +228,8 @@ def md(d):
             r.append("> - %s — %s%s" % (x["ime"] or x["id"], x["sastoyanie"],
                                          " (от %s)" % x["ot"][:10] if x.get("ot") else ""))
         r.append("")
+    if d.get("okno_razshireno"):
+        r += ["> Прозорецът е от %s: след последната чернова има пропуснати дни." % d["okno_ot"], ""]
     if not d["s_model"]:
         r += ["> Пуснато без модел: текстовете „какво се случи“ и „какво значи“ са празни.", ""]
     if not d["zapisi"]:
