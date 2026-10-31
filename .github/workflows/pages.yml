@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Тестове (Python и JS, без мрежа)
         run: |
@@ -119,12 +119,13 @@ jobs:
           python3 site/showcase/build.py apps/zhivo-nebe/_site/showcase \
             --repo-url "${{ github.server_url }}/${{ github.repository }}" --commit "${{ github.sha }}"
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: apps/zhivo-nebe/_site
+          include-hidden-files: true   # от v4 скритите файлове се пропускат; organizer/.htaccess да остане
 
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       - name: Отчет за 3D демото
         if: steps.v3d_tests.outcome != 'success'
