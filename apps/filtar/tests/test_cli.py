@@ -114,6 +114,67 @@ class TestKomandi(unittest.TestCase):
             _, out, _ = h("statistika")
             self.assertNotIn("⚠ НЕ ОТГОВАРЯ", out)
 
+    def test_chernova_kazva_kakvo_ne_e_procheteno(self):
+        """Празна страница от мълчащ източник не е „спокоен ден“: черновата го казва най-горе."""
+        with Papka() as p:
+            h = Hod(p)
+            pada = FalshivaMrezha({"https://example.net/blog/feed": (500, "", None, {}, b""),
+                                   "https://example.org/robots.txt": (200, "text/plain", "utf-8", {},
+                                                                      b"User-agent: *\nDisallow: /obshtina/\n")})
+            h("sabiray", "--izvori", h.izvori, mrezha=pada)
+            h("filtriray", "--bez-model")
+            kod, _, _ = h("chernova", "--data", "2026-10-05", "--bez-model")
+            self.assertEqual(kod, 0)
+            with open(os.path.join(p.danni, "chernova_2026-10-05.json"), encoding="utf-8") as f:
+                d = json.load(f)
+            self.assertEqual({x["id"] for x in d["ne_procheteni"]}, {"primer-obshtnost", "primer-obshtina"})
+            self.assertFalse(d["sabirane_staro"])
+            with open(os.path.join(p.danni, "chernova_2026-10-05.md"), encoding="utf-8") as f:
+                md = f.read()
+            self.assertIn("Не са прочетени", md.split("## 1.")[0])
+            self.assertIn("Примерен общностен блог — грешка: отговор 500", md)
+            self.assertIn("отказано извличане", md)
+
+    def test_chernova_bez_skorosht_sabirane(self):
+        from datetime import timedelta
+        with Papka() as p:
+            h = Hod(p)
+            h("sabiray", "--izvori", h.izvori)
+            h("filtriray", "--bez-model")
+            h.sega = SEGA + timedelta(days=2)
+            h("chernova", "--data", "2026-10-07", "--bez-model")
+            with open(os.path.join(p.danni, "chernova_2026-10-07.md"), encoding="utf-8") as f:
+                md = f.read()
+            self.assertIn("Събирачът не е тичал от %s" % SEGA.astimezone().strftime("%Y-%m-%d %H:%M"), md)
+            self.assertNotIn("Не са прочетени", md)
+
+    def test_chernova_ne_se_pishe_nanovo(self):
+        """Второто сутрешно пускане (07:40) не пренарежда черновата, която човекът може вече да е прочел."""
+        from datetime import timedelta
+        with Papka() as p:
+            h = Hod(p)
+            h("sabiray", "--izvori", h.izvori)
+            h("filtriray", "--bez-model")
+            h("chernova", "--data", "2026-10-05", "--bez-model")
+            pj = os.path.join(p.danni, "chernova_2026-10-05.json")
+            with open(pj, encoding="utf-8") as f:
+                parva = f.read()
+            redove = p.b.execute("SELECT COUNT(*) FROM firewall_log WHERE sloy=7").fetchone()[0]
+            h.sega = SEGA + timedelta(hours=1)
+            kod, out, _ = h("chernova", "--data", "2026-10-05", "--bez-model")
+            self.assertEqual(kod, 0)
+            self.assertIn("вече е създадена", out)
+            with open(pj, encoding="utf-8") as f:
+                self.assertEqual(f.read(), parva)
+            self.assertEqual(p.b.execute("SELECT COUNT(*) FROM firewall_log WHERE sloy=7").fetchone()[0], redove)
+            kod, out, _ = h("odobri", "--data", "2026-10-05")
+            self.assertIn("Чернова от 2026-10-05T07:30:00+00:00", out)
+            kod, out, _ = h("chernova", "--data", "2026-10-05", "--bez-model", "--nanovo")
+            self.assertEqual(kod, 0)
+            self.assertNotIn("вече е създадена", out)
+            with open(pj, encoding="utf-8") as f:
+                self.assertIn("08:30:00", json.load(f)["sazdadena"])
+
     def test_otkazano_izvlichane_ne_e_greshka(self):
         with Papka() as p:
             h = Hod(p)

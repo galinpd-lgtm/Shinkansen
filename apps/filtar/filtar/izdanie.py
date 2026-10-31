@@ -146,8 +146,25 @@ def zapis_za_radara(z, cfg, nomer, kakvo="", znachi=""):
     }
 
 
+DNI_NEPROCHETENI = 7      # източник, опитан и неуспял в последните N дни, се изброява в черновата
+CHASA_BEZ_SABIRANE = 24   # по-старо последно събиране → предупреждение най-горе в черновата
+
+
+def neprocheteni(b, sega):
+    """Какво НЕ е прочетено: празната чернова не бива да изглежда като спокоен ден.
+
+    → (източници с неуспешен последен опит [{id, ime, sastoyanie, ot}], последното събиране или None)."""
+    ot = (sega - timedelta(days=DNI_NEPROCHETENI)).isoformat(timespec="seconds")
+    izvori = [{"id": r["id"], "ime": r["ime"], "sastoyanie": r["posledno_sastoyanie"], "ot": r["ne_otgovarya_ot"]}
+              for r in b.execute("SELECT * FROM izvori WHERE posleden_opit >= ? AND (posledno_sastoyanie LIKE "
+                                 "'грешка%' OR posledno_sastoyanie LIKE 'отказано%') ORDER BY id", (ot,))]
+    r = b.execute("SELECT MAX(posleden_opit) FROM izvori WHERE id NOT LIKE 'ruchno:%'").fetchone()
+    return izvori, r[0]
+
+
 def chernova(b, cfg, den, papka, sega, model=None):
     izbrani, za_svedenie, otpadnali = podberi(b, cfg, den)
+    ne_izvori, posledno = neprocheteni(b, sega)
     zapisi = []
     for i, z in enumerate(izbrani, 1):
         kakvo, znachi = tekstove(model, z) if model is not None else ("", "")
@@ -161,7 +178,10 @@ def chernova(b, cfg, den, papka, sega, model=None):
     d = {"versiya": VERSIYA, "data": den.isoformat(), "sazdadena": vreme,
          "s_model": model is not None, "zapisi": zapisi,
          "za_svedenie": svedenie,
-         "otpadnali_na_sloy7": len(otpadnali) - len(svedenie)}
+         "otpadnali_na_sloy7": len(otpadnali) - len(svedenie),
+         "ne_procheteni": ne_izvori, "posledno_sabirane": posledno,
+         "sabirane_staro": posledno is None or
+         sega - datetime.fromisoformat(posledno) > timedelta(hours=CHASA_BEZ_SABIRANE)}
     os.makedirs(papka, exist_ok=True)
     pj = os.path.join(papka, "chernova_%s.json" % den.isoformat())
     with open(pj, "w", encoding="utf-8") as f:
@@ -173,6 +193,16 @@ def chernova(b, cfg, den, papka, sega, model=None):
 
 def md(d):
     r = ["# Радар — чернова за %s" % d["data"], ""]
+    if d.get("sabirane_staro"):
+        p = d.get("posledno_sabirane")
+        koga = datetime.fromisoformat(p).astimezone().strftime("%Y-%m-%d %H:%M") if p else "никога"
+        r += ["> ⚠ Събирачът не е тичал от %s — черновата е само от старото." % koga, ""]
+    if d.get("ne_procheteni"):
+        r += ["> ⚠ Не са прочетени (празно от тях не значи „няма новини“):"]
+        for x in d["ne_procheteni"]:
+            r.append("> - %s — %s%s" % (x["ime"] or x["id"], x["sastoyanie"],
+                                         " (от %s)" % x["ot"][:10] if x.get("ot") else ""))
+        r.append("")
     if not d["s_model"]:
         r += ["> Пуснато без модел: текстовете „какво се случи“ и „какво значи“ са празни.", ""]
     if not d["zapisi"]:
@@ -205,6 +235,17 @@ def md(d):
 
 
 # ─────────── одобрение ───────────
+
+def sazdadena(papka, den):
+    """Кога е създадена черновата за деня, или None, ако няма такава."""
+    try:
+        with open(os.path.join(papka, "chernova_%s.json" % den.isoformat()), encoding="utf-8") as f:
+            return json.load(f).get("sazdadena") or "?"
+    except OSError:
+        return None
+    except ValueError:
+        return "?"
+
 
 def odobri(b, papka, den, mahni, go, sega):
     """→ (одобрени записи, махнати, път или None). Без go нищо не се пише — нито файл, нито база."""

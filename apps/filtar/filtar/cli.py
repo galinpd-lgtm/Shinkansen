@@ -68,6 +68,8 @@ def parser():
     c = sub.add_parser("chernova", parents=[obshti], help="до 10 записа → chernova_<дата>.json и .md")
     c.add_argument("--data", required=True, type=_den)
     c.add_argument("--bez-model", action="store_true", help="без текстовете „какво се случи“ и „какво значи“")
+    c.add_argument("--nanovo", action="store_true",
+                   help="пише черновата наново, макар че за деня вече има; номерата може да се разместят")
     o = sub.add_parser("odobri", parents=[obshti], help="без --go само показва; с --go пише odobreno_<дата>.json")
     o.add_argument("--data", required=True, type=_den)
     o.add_argument("--mahni", type=_nomera, default=[], help="номера от черновата, напр. 3,7")
@@ -130,6 +132,12 @@ def izpalni(a):
             return IZHOD_OK, "%s · exit 0" % obsh
 
         if a.komanda == "chernova":
+            # повторното сутрешно пускане не пренарежда номерата, които човекът може вече да е прочел
+            stara = izd.sazdadena(papka, a.data)
+            if stara and not a.nanovo:
+                print("Черновата за %s вече е създадена (%s) — не я пиша наново. За нова: --nanovo." % (
+                    a.data.isoformat(), stara))
+                return IZHOD_OK, "чернова вече има · exit 0"
             model, _ = _model(cfg, a.bez_model)
             d, pj = izd.chernova(b, cfg, a.data, papka, sega, model=model)
             print("Чернова: %s (%d записа%s)" % (pj, len(d["zapisi"]), "" if d["s_model"] else ", без текстове"))
@@ -137,6 +145,7 @@ def izpalni(a):
 
         if a.komanda == "odobri":
             ostavat, mahnati, izh = izd.odobri(b, papka, a.data, a.mahni, a.go, sega)
+            print("Чернова от %s:" % izd.sazdadena(papka, a.data))
             for z in ostavat:
                 print("  ✓ %d. %s" % (z["nomer"], z["zaglavie"]))
             for z in mahnati:

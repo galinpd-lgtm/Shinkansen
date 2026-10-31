@@ -16,7 +16,7 @@
 cd apps/filtar
 python3 -m filtar sabiray   [--izvori izvori.json] [--vhod vhod/]    # събира; пише само новото
 python3 -m filtar filtriray [--bez-model]                           # 7-те слоя върху несортираното
-python3 -m filtar chernova  --data 2026-10-05 [--bez-model]         # до 10 записа → chernova_<дата>.json + .md
+python3 -m filtar chernova  --data 2026-10-05 [--bez-model] [--nanovo] # до 10 записа → chernova_<дата>.json + .md
 python3 -m filtar odobri    --data 2026-10-05 [--mahni 3,7] [--go]  # без --go само показва
 python3 -m filtar izdanie   --izhod izhod/radar/ [--dnes 2026-10-05] # radar.json, rss.xml, po-den/<дата>.json
 python3 -m filtar statistika [--json]                               # решения по слой и по източник
@@ -143,7 +143,13 @@ API-то е същото (`/api/chat`). В облачен режим без кл
 
 В `papka_danni` (вътрешни):
 - `filtar.sqlite` — записите с пълните текстове, `firewall_log`, източниците;
-- `chernova_<дата>.json` и `.md` — за четене и одобрение. Номерираните записи (до 10) са само ПРОПУСНИ.
+- `chernova_<дата>.json` и `.md` — за четене и одобрение. Пише се **веднъж на ден**: ако за датата вече има
+  чернова, `chernova` не я пише наново (иначе номерата под `odobri --mahni` може да се разместят). За нова —
+  `--nanovo`. `odobri` показва коя чернова (кога е създадена) одобрява.
+  Най-горе черновата казва **какво не е прочетено** (`ne_procheteni`): източниците, чийто последен опит в
+  последните 7 дни е бил грешка или отказано извличане, и предупреждение, ако събирачът не е тичал над 24 часа
+  (`sabirane_staro`). Празна чернова от мълчащи източници не бива да изглежда като спокоен ден.
+  Номерираните записи (до 10) са само ПРОПУСНИ.
   Под тях е разделът **„За сведение“** (`za_svedenie`) със записите с ПРЕДУПРЕДИ. Те са без номер, не заемат място
   и `odobri` не ги одобрява;
 - `odobreno_<дата>.json` — само след `odobri --go`.
@@ -202,6 +208,7 @@ systemctl --user daemon-reload && systemctl --user enable --now filtar-sabiray.t
 
 - `filtar-sabiray` — на 15 минути, без модел, пише само новото. Изход 1 само ако не отговори нито един източник.
 - `filtar-sutrin` — в 06:40 `filtriray` и `chernova` за деня, с повторен опит в 07:40, ако машината е била заета.
+  Ако черновата в 06:40 е станала, ходът в 07:40 само филтрира новото и не я пипа.
 
 ## Тестове
 
