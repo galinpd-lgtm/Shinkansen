@@ -107,7 +107,16 @@ def check_building(folder):
     return venue, files, errors, warnings
 
 
-def build(folder, out, form=False, refresh=60):
+HIDDEN_META = '<meta name="robots" content="noindex, nofollow">'
+HIDDEN_HTACCESS = """
+# --hidden: само за който има връзката — търсачките не индексират нищо от папката
+<IfModule mod_headers.c>
+  Header set X-Robots-Tag "noindex, nofollow"
+</IfModule>
+"""
+
+
+def build(folder, out, form=False, refresh=60, hidden=False):
     """Сглобява папката за качване. Не пипа съществуваща непразна папка."""
     venue, files, errors, warnings = check_building(folder)
     if errors:
@@ -120,6 +129,11 @@ def build(folder, out, form=False, refresh=60):
         raise ValueError("site/sgrada.html: не намирам <venue-3d src=\"venue.json\"> — сменен ли е шаблонът?")
     if form:
         page = page.replace(TAG, f'<venue-3d src="venue.json" status="status.json" refresh="{int(refresh)}"></venue-3d>')
+    if hidden:
+        # и в страницата, и в заглавката: качването после проверява отвън, че страницата е с noindex
+        page = page.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n  ' + HIDDEN_META, 1)
+        if HIDDEN_META not in page:
+            raise ValueError("site/sgrada.html: няма <meta charset=\"utf-8\"> — не мога да сложа noindex")
     os.makedirs(os.path.join(out, "core"), exist_ok=True)
     with open(os.path.join(out, "index.html"), "w", encoding="utf-8") as f:
         f.write(page)
@@ -132,12 +146,12 @@ def build(folder, out, form=False, refresh=60):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         shutil.copy(os.path.join(folder, rel), dest)
     with open(os.path.join(out, ".htaccess"), "w", encoding="utf-8") as f:
-        f.write(ROOT_HTACCESS)
+        f.write(ROOT_HTACCESS + (HIDDEN_HTACCESS if hidden else ""))
     if form:
         os.makedirs(os.path.join(out, "vhod"))
         for name in FORM_FILES:
             shutil.copy(os.path.join(HERE, "php", name), os.path.join(out, "vhod", name))
-    return {"files": files, "warnings": warnings, "form": form}
+    return {"files": files, "warnings": warnings, "form": form, "hidden": hidden}
 
 
 def after_deploy(pkg_names, cfg, client, archive, log=print, get=None):
@@ -225,6 +239,7 @@ def main(argv=None):
     b.add_argument("out")
     b.add_argument("--form", action="store_true", help="с формата за входа (vhod/) и status=\"status.json\"")
     b.add_argument("--refresh", type=int, default=60, help="колко често страницата чете status.json, секунди")
+    b.add_argument("--hidden", action="store_true", help="само с връзка: noindex в страницата и в заглавките")
     k = sub.add_parser("package", help="детерминиран .tgz + .sha256 (както организатора)")
     k.add_argument("site")
     k.add_argument("--out", required=True)
@@ -242,13 +257,14 @@ def main(argv=None):
 
     if args.cmd == "build":
         try:
-            r = build(args.building, args.out, form=args.form, refresh=args.refresh)
+            r = build(args.building, args.out, form=args.form, refresh=args.refresh, hidden=args.hidden)
         except (OSError, ValueError) as e:
             print("build: %s" % e, file=sys.stderr)
             return 1
         for w in r["warnings"]:
             print("WARNING " + w)
-        print("OK %s: %s%s" % (args.out, ", ".join(r["files"]), " + формата за входа (vhod/)" if r["form"] else ""))
+        print("OK %s: %s%s%s" % (args.out, ", ".join(r["files"]), " + формата за входа (vhod/)" if r["form"] else "",
+                                 " · само с връзка (noindex)" if r["hidden"] else ""))
         return 0
     if args.cmd == "package":
         try:
