@@ -152,8 +152,9 @@ test('модел и страница заедно под 5 MB (с Draco деко
     if (!st.isDirectory()) return st.size;
     return readdirSync(u).reduce((s, f) => s + size(`${rel}/${f}`), 0);
   };
-  const total = size('site') + size('core/venue-3d.js') + size('core/venue-data.js')
-    + size('core/skeleton-geometry.js') + size('core/sky.js') + size('vendor/three') + size('models/arena.example.glb')
+  const core = readdirSync(new URL('core', root)).filter((f) => f.endsWith('.js'))
+    .reduce((s, f) => s + size(`core/${f}`), 0);   // всички модули — както ги копира pages.yml
+  const total = size('site') + core + size('vendor/three') + size('models/arena.example.glb')
     + size('blender/skeleton.example.json');
   assert.ok(total < 5 * 1024 * 1024, `${(total / 1024 / 1024).toFixed(2)} MB`);
 });

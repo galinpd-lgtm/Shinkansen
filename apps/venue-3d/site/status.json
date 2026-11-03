@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "updated": "2026-06-20T19:30:00+03:00",
+  "max_age_min": null,
+  "hotspots": {
+    "north": { "state": "busy", "note": { "bg": "Опашка около 10 минути — източният вход е по-свободен.", "en": "About a 10-minute queue — the east entrance is quieter." } },
+    "east": { "state": "open" },
+    "south": { "state": "closed", "note": { "bg": "Отваря се за изхода след края.", "en": "Opens for the way out after the event." } },
+    "accessible": { "state": "open" },
+    "west_wing": { "state": "closed" },
+    "tickets": { "state": "open" }
+  }
+}

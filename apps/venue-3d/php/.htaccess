@@ -1,0 +1,8 @@
+# Отвън се вика само vhod.php; lib.php и шаблонът — не.
+<FilesMatch "^(lib\.php|config\.sample\.php)$">
+  Require all denied
+</FilesMatch>
+Options -Indexes
+<IfModule mod_headers.c>
+  Header set X-Robots-Tag "noindex, nofollow"
+</IfModule>
