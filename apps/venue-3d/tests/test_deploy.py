@@ -104,6 +104,17 @@ class Build(unittest.TestCase):
         with self.assertRaises(ValueError):
             deploy.build(b, out)                                                # не пипа непразна папка
 
+    def test_hidden_page_is_noindex_and_public_one_is_not(self):
+        b = make_building(os.path.join(self.tmp, "arena"))
+        hid, pub = os.path.join(self.tmp, "hid"), os.path.join(self.tmp, "pub")
+        deploy.build(b, hid, form=True, hidden=True)
+        deploy.build(b, pub, form=True)
+        read = lambda *p: open(os.path.join(*p), encoding="utf-8").read()  # noqa: E731
+        self.assertIn('<meta name="robots" content="noindex, nofollow">', read(hid, "index.html"))
+        self.assertIn('X-Robots-Tag "noindex, nofollow"', read(hid, ".htaccess"))
+        self.assertNotIn("noindex", read(pub, "index.html"))
+        self.assertNotIn("X-Robots-Tag", read(pub, ".htaccess"))
+
     def test_without_form_the_page_has_no_status(self):
         out = os.path.join(self.tmp, "out")
         deploy.build(make_building(os.path.join(self.tmp, "arena")), out)
@@ -134,7 +145,7 @@ class Deploy(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
         site = os.path.join(cls.tmp, "site")
-        deploy.build(make_building(os.path.join(cls.tmp, "arena")), site, form=True)
+        deploy.build(make_building(os.path.join(cls.tmp, "arena")), site, form=True, hidden=True)
         import ops
         cls.pkg = ops.package(site, os.path.join(cls.tmp, "pkgs"), name="sgrada")["tgz"]
         cls.home = os.path.join(cls.tmp, "home")
@@ -198,6 +209,7 @@ class Deploy(unittest.TestCase):
         self.assertIn("status.json пренесен от _ARHIV_sgrada_2026-11-03_1805", names)
         self.assertTrue(any(n == "формата за входа" and ok for n, ok, _ in steps))
         self.assertTrue(any(n == "venue.json отвън" and ok for n, ok, _ in steps))
+        self.assertTrue(any(n == "всички страници 200 и noindex" and ok for n, ok, _ in steps))   # --hidden, проверено отвън
 
     def test_3_missing_server_config_is_reported(self):
         os.remove(os.path.join(self.home, "venue3d_config.php"))

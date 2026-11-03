@@ -304,14 +304,16 @@ public_html/sgrada/vhod/     ← php/vhod.php, php/lib.php, php/.htaccess
 папката (бележки, чертежи) не стига до сървъра.
 
 ```bash
-python3 apps/venue-3d/deploy.py build ~/sgradi/dvorets ~/sgradi/dvorets/_site --form   # с формата за входа
+python3 apps/venue-3d/deploy.py build ~/sgradi/dvorets ~/sgradi/dvorets/_site --form --hidden   # с формата; само с връзка
 python3 apps/venue-3d/deploy.py package ~/sgradi/dvorets/_site --out ~/sgradi/paketi
 python3 apps/venue-3d/deploy.py deploy ~/sgradi/paketi/sgrada_….tgz --config ~/.config/venue3d/deploy.json        # план
 python3 apps/venue-3d/deploy.py deploy ~/sgradi/paketi/sgrada_….tgz --config ~/.config/venue3d/deploy.json --go
 ```
 
 - `build` прави `index.html` от `site/sgrada.html` (с `--form` — и `status="status.json"`), слага `core/`,
-  `vendor/`, `.htaccess` (без списък на папките, `status.json` без кеш) и с `--form` — `vhod/`. Проверява
+  `vendor/`, `.htaccess` (без списък на папките, `status.json` без кеш) и с `--form` — `vhod/`.
+  С `--hidden` страницата е **само с връзка**: `noindex, nofollow` в `index.html` и в заглавките
+  (`X-Robots-Tag`); при качването проверката отвън иска noindex на страницата. Проверява
   `venue.json`: пътищата — само относителни в папката, моделът — до 5 MB (иначе предупреждение), `id` на
   точките. Не пише в непразна папка. `status.json` и config с ПИН-овете **не** влизат в пакета.
 - `package` и `deploy` са тези на организатора (`apps/organizer`): детерминиран `.tgz` със SHA-256;
