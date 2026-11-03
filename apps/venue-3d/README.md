@@ -12,6 +12,7 @@
   Draco декодерът (Apache-2.0, `LICENSE` до него)
 - `models/arena.example.glb` — моделът на примерната арена, изнесен с Blender скрипта
 - `php/` — формата за входа (`vhod.php`): човекът на входа казва от телефона „отворен / опашка / затворен“
+- `deploy.py` — страницата на истинска сграда: сглобяване, пакет и качване в cPanel
 - `site/` — демонстрацията (`index.html`) и чистата страница за една сграда (`sgrada.html`); публикуват се под
   `/3d/` (`.github/workflows/pages.yml`)
 
@@ -33,6 +34,7 @@ python3 -m http.server -d _site 8000                    # → http://localhost:8
 python3 -m unittest discover -s blender/tests -v        # skeleton.json, правилата и glb-то на prepare_glb.py
 node --test core/tests/*.test.mjs                       # venue.json, временният модел, цветът от glb, размерът под 5 MB
 python3 -m unittest discover -s php/tests -v            # формата за входа през php -S (пропуска се без php)
+python3 -m unittest discover -s tests -v                # deploy.py: сглобяване, качване с подменен cPanel
 ```
 
 Тестовете на `prepare_glb.py`, които пускат самия Blender, вървят само където той е наличен — модулът `bpy`
@@ -278,7 +280,7 @@ python3 blender/glb_prep.py --report site/model.glb     # какво има в �
 - **Дневник** кой какво е сменил — `vhod.log` в `state_dir`, извън `public_html`. В публичния `status.json`
   няма имена.
 
-Качване (на хостинга, до страницата на сградата):
+Качване — с `deploy.py` (по-долу) или на ръка:
 
 ```text
 public_html/sgrada/          ← sgrada.html, venue.json, model.glb, core/, vendor/ (както демото)
@@ -294,6 +296,32 @@ public_html/sgrada/vhod/     ← php/vhod.php, php/lib.php, php/.htaccess
 `php -r 'echo password_hash("ПИН", PASSWORD_DEFAULT), "\n";'` — и се слага в config **в единични кавички**
 (в двойни PHP чете `$2y$10$…` като променливи и никой ПИН не става). Config може да е и на друг път —
 променливата на средата `VENUE3D_CONFIG`.
+
+### Качване на истинска сграда: `deploy.py`
+
+Данните на сградата стоят извън репото — папка с `venue.json` и файловете, към които той сочи
+(`model.glb` от `prepare_glb.py`, по желание `skeleton.json`). Влиза **само** това; нищо друго от
+папката (бележки, чертежи) не стига до сървъра.
+
+```bash
+python3 apps/venue-3d/deploy.py build ~/sgradi/dvorets ~/sgradi/dvorets/_site --form   # с формата за входа
+python3 apps/venue-3d/deploy.py package ~/sgradi/dvorets/_site --out ~/sgradi/paketi
+python3 apps/venue-3d/deploy.py deploy ~/sgradi/paketi/sgrada_….tgz --config ~/.config/venue3d/deploy.json        # план
+python3 apps/venue-3d/deploy.py deploy ~/sgradi/paketi/sgrada_….tgz --config ~/.config/venue3d/deploy.json --go
+```
+
+- `build` прави `index.html` от `site/sgrada.html` (с `--form` — и `status="status.json"`), слага `core/`,
+  `vendor/`, `.htaccess` (без списък на папките, `status.json` без кеш) и с `--form` — `vhod/`. Проверява
+  `venue.json`: пътищата — само относителни в папката, моделът — до 5 MB (иначе предупреждение), `id` на
+  точките. Не пише в непразна папка. `status.json` и config с ПИН-овете **не** влизат в пакета.
+- `package` и `deploy` са тези на организатора (`apps/organizer`): детерминиран `.tgz` със SHA-256;
+  без `--go` — само план; старата папка се преименува на `_ARHIV_<папка>_<време>`, нищо не се трие;
+  маркер и проверка отвън. Config за качването — същият формат (`cpanel`, `user`, `token_file`,
+  `public_html`, `dir`, `site_url`), извън репото; токенът — във файла или в `CPANEL_TOKEN`.
+- След качването: **`status.json` се пренася** от старата папка (ако формата вече не е записала нов) —
+  иначе всяко качване би изтривало каквото са казали хората на входа. После проверява отвън
+  `venue.json` и **формата за входа**: отговаря ли с ПИН екрана; ако няма `~/venue3d_config.php` или
+  пътищата в него не са на тази папка — казва го. Config с ПИН-овете се прави веднъж, на сървъра.
 
 Тестове: `python3 -m unittest discover -s php/tests -v` пуска `php -S` и минава целия път — грешен ПИН и
 паузата, само своите точки, запис, потвърждаване, изчистване, CSRF, екраниране — а записаният `status.json`

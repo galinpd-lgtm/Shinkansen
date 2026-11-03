@@ -87,6 +87,7 @@ jobs:
         run: |
           python3 -m unittest discover -s blender/tests
           python3 -m unittest discover -s php/tests      # формата за входа през php -S (runner-ът има php)
+          python3 -m unittest discover -s tests          # deploy.py (сглобяване и качване с подменен cPanel)
           node --test core/tests/*.test.mjs
 
       - name: Сграда в 3D — сглобяване под /3d/
