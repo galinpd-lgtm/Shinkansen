@@ -2,6 +2,7 @@
 
     organizer.py deploy ПАКЕТ.tgz --config ~/.config/organizer/deploy.json            # само план
     organizer.py deploy ПАКЕТ.tgz --config … --go [--htaccess-ok] [--no-test-answer]
+    (или ПАКЕТ.zip — направо; при .tgz, който сървърът не разархивира, се минава сам на .zip до него)
 
 Config (извън репото — адреси, потребител и токен не влизат нито тук, нито в event.json):
     {"cpanel": "https://сървър:2083", "user": "…", "token_file": "~/.config/organizer/cpanel.token",
@@ -18,7 +19,6 @@ import base64
 import json
 import os
 import re
-import tarfile
 import time
 import urllib.error
 import urllib.parse
@@ -110,7 +110,8 @@ class Cpanel:
         body = b"".join(("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (boundary, k, v)).encode()
                         for k, v in parts)
         body += ("--%s\r\nContent-Disposition: form-data; name=\"file-1\"; filename=\"%s\"\r\n"
-                 "Content-Type: application/gzip\r\n\r\n" % (boundary, os.path.basename(path))).encode()
+                 "Content-Type: %s\r\n\r\n" % (boundary, os.path.basename(path),
+                                                 "application/zip" if path.endswith(".zip") else "application/gzip")).encode()
         body += payload + ("\r\n--%s--\r\n" % boundary).encode()
         data = self.uapi("Fileman", "upload_files", data=body,
                          headers={"Content-Type": "multipart/form-data; boundary=%s" % boundary})
@@ -169,8 +170,7 @@ def deploy(pkg, cfg, go=False, htaccess_ok=False, test_answer=True, client=None,
         want = f.read().split()[0]
     if not step("SHA-256 на пакета", ops.sha256_file(pkg) == want, want[:16] + "…"):
         return steps
-    with tarfile.open(pkg) as t:
-        names = t.getnames()
+    names = ops.archive_names(pkg)
     pages = sorted(n for n in names if n.endswith(".html") and "/" not in n)
     if any(n.startswith("/") or ".." in n.split("/") for n in names):
         step("пътищата в пакета", False, "абсолютен път или „..“ — отказвам")
@@ -225,9 +225,31 @@ def deploy(pkg, cfg, go=False, htaccess_ok=False, test_answer=True, client=None,
         cp.upload("%s/_ARHIV_uploads" % root, pkg)
         step("качен пакет", True, os.path.basename(pkg))
         cp.mkdir(root, d)
-        cp.extract("%s/_ARHIV_uploads/%s" % (root, os.path.basename(pkg)), "%s/%s" % (root, d))
+        try:
+            cp.extract("%s/_ARHIV_uploads/%s" % (root, os.path.basename(pkg)), "%s/%s" % (root, d))
+            refused = None
+        except CpanelError as e:
+            refused = str(e)
         got = cp.list("%s/%s" % (root, d))
         missing = [p for p in pages if p not in got]
+        zip_pkg = pkg[:-4] + ".zip"
+        if (refused or missing) and pkg.endswith(".tgz"):
+            # някои cPanel (SuperHosting) не разархивират tgz: същото съдържание като zip, ако е до пакета
+            why = refused or "липсват: " + ", ".join(missing)
+            if not os.path.exists(zip_pkg) or not os.path.exists(zip_pkg + ".sha256"):
+                step("разархивиране на .tgz", False, why + " · няма .zip до пакета — направи го наново с package")
+                return steps
+            with open(zip_pkg + ".sha256", encoding="utf-8") as f:
+                if f.read().split()[0] != ops.sha256_file(zip_pkg) or sorted(ops.archive_names(zip_pkg)) != sorted(names):
+                    step("разархивиране на .tgz", False, why + " · .zip до пакета не отговаря на SHA-256 или на съдържанието")
+                    return steps
+            step("разархивиране на .tgz", None, why + " → минавам на " + os.path.basename(zip_pkg))
+            cp.upload("%s/_ARHIV_uploads" % root, zip_pkg)
+            cp.extract("%s/_ARHIV_uploads/%s" % (root, os.path.basename(zip_pkg)), "%s/%s" % (root, d))
+            got = cp.list("%s/%s" % (root, d))
+            missing = [p for p in pages if p not in got]
+        elif refused:
+            raise CpanelError(refused)
         if not step("разархивиран в %s/%s" % (root, d), not missing, "липсват: " + ", ".join(missing) if missing else
                     "%d неща" % len(got)):
             return steps
@@ -248,9 +270,8 @@ def deploy(pkg, cfg, go=False, htaccess_ok=False, test_answer=True, client=None,
         wait(3)
     if not step("маркерът се вижда отвън", ok, "код %d" % code):
         return steps
-    with tarfile.open(pkg) as t:
-        hidden = 'content="noindex' in t.extractfile("index.html").read().decode("utf-8", "replace") \
-            if "index.html" in names else False
+    hidden = 'content="noindex' in ops.archive_read(pkg, "index.html").decode("utf-8", "replace") \
+        if "index.html" in names else False
     bad = []
     for p in pages:
         code, body = _get(base + p + "?cb=" + cb)
@@ -260,8 +281,7 @@ def deploy(pkg, cfg, go=False, htaccess_ok=False, test_answer=True, client=None,
          ", ".join(bad) if bad else "%d страници" % len(pages))
 
     if test_answer and "api/forms.json" in names:
-        with tarfile.open(pkg) as t:
-            spec = json.load(t.extractfile("api/forms.json"))
+        spec = json.loads(ops.archive_read(pkg, "api/forms.json"))
         fid, form = next(iter(spec["forms"].items()))
         ans = ops.sample_answer(form)
         ans["_form"] = fid

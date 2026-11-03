@@ -12,6 +12,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -52,6 +53,27 @@ class Package(unittest.TestCase):
         with tarfile.open(ra["tgz"]) as t:
             self.assertEqual(sorted(t.getnames()), ["assets/s.css", "index.html"])
             self.assertTrue(all(m.mtime == 0 and m.uid == 0 for m in t.getmembers()))
+
+    def test_zip_next_to_tgz_same_content_deterministic(self):
+        a = site_with({"index.html": "<p>1</p>", "assets/s.css": "a{}"})
+        b = site_with({"assets/s.css": "a{}", "index.html": "<p>1</p>"})
+        ra = ops.package(a, self.out, name="ev", today=DAY)
+        rb = ops.package(b, os.path.join(self.out, "b"), name="ev", today=DAY)
+        self.assertEqual(ra["zip"], ra["tgz"][:-4] + ".zip")
+        self.assertEqual(ops.sha256_file(ra["zip"]), ops.sha256_file(rb["zip"]))      # еднакво съдържание → еднакъв zip
+        with open(ra["zip"] + ".sha256") as f:
+            self.assertEqual(f.read().split()[0], ops.sha256_file(ra["zip"]))
+        self.assertEqual(sorted(ops.archive_names(ra["zip"])), sorted(ops.archive_names(ra["tgz"])))
+        for n in ops.archive_names(ra["tgz"]):
+            self.assertEqual(ops.archive_read(ra["zip"], n), ops.archive_read(ra["tgz"], n))
+        with zipfile.ZipFile(ra["zip"]) as z:
+            self.assertTrue(all(i.date_time == ops.ZIP_TIME and (i.external_attr >> 16) == 0o644 for i in z.infolist()))
+        # пакет отпреди zip-а: zip се добавя, tgz не се пипа
+        os.remove(ra["zip"])
+        before = ops.sha256_file(ra["tgz"])
+        again = ops.package(a, self.out, name="ev", today=DAY)
+        self.assertTrue(again["existed"] and os.path.exists(again["zip"]))
+        self.assertEqual(ops.sha256_file(ra["tgz"]), before)
 
     def test_never_overwrites_and_reports_diff(self):
         old = site_with({"index.html": "1", "tema-12.html": "стара", "stara.html": "x"})

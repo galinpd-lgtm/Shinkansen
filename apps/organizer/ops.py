@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import date, datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -55,10 +56,10 @@ def manifest_text(m):
 
 
 def read_manifest(path):
-    """Предишен пакет: .manifest.txt, .tgz (до него трябва .manifest.txt) или папка."""
+    """Предишен пакет: .manifest.txt, .tgz или .zip (до него трябва .manifest.txt) или папка."""
     if os.path.isdir(path):
         return manifest(path)
-    if path.endswith(".tgz"):
+    if path.endswith((".tgz", ".zip")):
         path = path[:-4] + ".manifest.txt"
     out = {}
     with open(path, encoding="utf-8") as f:
@@ -85,8 +86,42 @@ def diff_text(d):
     return "\n".join(lines) + "\n"
 
 
+ZIP_TIME = (1980, 1, 1, 0, 0, 0)   # най-ранното време, което zip може да запише — за еднакъв файл при еднакво съдържание
+
+
+def write_zip(site, rels, path):
+    """Детерминиран zip със същите файлове като tgz: сортирани пътища, едно и също време, права 644."""
+    with zipfile.ZipFile(path, "w") as z:
+        for rel in rels:
+            info = zipfile.ZipInfo(rel, date_time=ZIP_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3                 # Unix — за да важат правата по-долу
+            info.external_attr = 0o644 << 16
+            with open(os.path.join(site, rel), "rb") as f:
+                z.writestr(info, f.read())
+
+
+def archive_names(path):
+    """Пътищата в пакет — .tgz или .zip."""
+    if path.endswith(".zip"):
+        with zipfile.ZipFile(path) as z:
+            return [n for n in z.namelist() if not n.endswith("/")]
+    with tarfile.open(path) as t:
+        return t.getnames()
+
+
+def archive_read(path, name):
+    """Съдържанието на един файл от пакет — .tgz или .zip."""
+    if path.endswith(".zip"):
+        with zipfile.ZipFile(path) as z:
+            return z.read(name)
+    with tarfile.open(path) as t:
+        return t.extractfile(name).read()
+
+
 def package(site, out_dir, name=None, prev=None, today=None):
-    """Детерминиран tgz (сортирани пътища, mtime 0, собственик 0) + .sha256 + .manifest.txt (+ .diff.txt).
+    """Детерминиран tgz (сортирани пътища, mtime 0, собственик 0) и същото като zip — всеки със свой .sha256 —
+    + .manifest.txt (+ .diff.txt). zip е за хостинги, чийто cPanel не разархивира tgz (SuperHosting).
     Нищо не презаписва: ако пакетът със същото съдържание вече го има, само го посочва."""
     if not os.path.isdir(site):
         raise ValueError("няма папка %s" % site)
@@ -117,6 +152,12 @@ def package(site, out_dir, name=None, prev=None, today=None):
             f.write(manifest_text(m))
         with open(tgz + ".sha256", "w", encoding="utf-8") as f:
             f.write("%s  %s\n" % (sha256_file(tgz), os.path.basename(tgz)))
+    zip_path = tgz[:-4] + ".zip"
+    if not os.path.exists(zip_path):           # и за пакети отпреди zip-а
+        write_zip(site, list(m), zip_path)
+        with open(zip_path + ".sha256", "w", encoding="utf-8") as f:
+            f.write("%s  %s\n" % (sha256_file(zip_path), os.path.basename(zip_path)))
+    result["zip"] = zip_path
     if prev:
         d = diff(read_manifest(prev), m)
         result["diff"] = d

@@ -16,6 +16,7 @@ import threading
 import time
 import unittest
 import urllib.parse
+import zipfile
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +58,10 @@ class FakeCpanel:
 
     def extract(self, archive, dest):
         self.calls.append(("extract", archive, dest))
+        if archive.endswith(".zip"):
+            with zipfile.ZipFile(self._p(archive)) as z:
+                z.extractall(self._p(dest))
+            return
         with tarfile.open(self._p(archive)) as t:
             t.extractall(self._p(dest), filter="data")
 
@@ -67,6 +72,16 @@ class FakeCpanel:
     def upload(self, d, path):
         self.calls.append(("upload", d, os.path.basename(path)))
         shutil.copyfile(path, os.path.join(self._p(d), os.path.basename(path)))
+
+
+class SuperHosting(FakeCpanel):
+    """cPanel, който не разархивира tgz (както на SuperHosting) — само zip."""
+
+    def extract(self, archive, dest):
+        if archive.endswith(".tgz"):
+            self.calls.append(("extract", archive, dest))
+            raise deploy.CpanelError("Fileman::fileop: unsupported archive type")
+        super().extract(archive, dest)
 
 
 def free_port():
@@ -145,6 +160,40 @@ class Deploy(unittest.TestCase):
             f.write("0" * 64 + "  bad.tgz\n")
         steps = deploy.deploy(bad, self.cfg, client=FakeCpanel(self.home), log=lambda *_: None)
         self.assertEqual(steps, [("SHA-256 на пакета", False, "0000000000000000…")])
+
+
+    def go_at(self, pkg, hour, client_cls=FakeCpanel):
+        cp = client_cls(self.home)
+        steps = deploy.deploy(pkg, self.cfg, go=True, htaccess_ok=True, client=cp, now=datetime(2026, 10, 1, hour, 0),
+                              log=lambda *_: None, wait=lambda s: None)
+        return {n: (ok, note) for n, ok, note in steps}, cp
+
+    def test_5_tgz_refused_falls_back_to_zip(self):
+        res, cp = self.go_at(self.pkg, 10, SuperHosting)
+        self.assertEqual([s for s, (ok, _) in res.items() if ok is False], ["admin/ иска вход"], res)   # php -S: без парола, както в test_3
+        ok, note = res["разархивиране на .tgz"]
+        self.assertIsNone(ok)                                        # бележка, не грешка
+        self.assertIn("unsupported archive type", note)
+        self.assertIn(".zip", note)
+        self.assertIn(("upload", "public_html/_ARHIV_uploads", os.path.basename(self.pkg)[:-4] + ".zip"), cp.calls)
+        self.assertTrue(res["маркерът се вижда отвън"][0])
+        self.assertTrue(res["всички страници 200 и noindex"][0], res)
+
+    def test_6_zip_directly(self):
+        res, cp = self.go_at(self.pkg[:-4] + ".zip", 11, SuperHosting)
+        self.assertEqual([s for s, (ok, _) in res.items() if ok is False], ["admin/ иска вход"], res)   # php -S: без парола, както в test_3
+        self.assertNotIn("разархивиране на .tgz", res)
+        self.assertFalse([c for c in cp.calls if c[0] == "extract" and c[1].endswith(".tgz")])
+
+    def test_7_tgz_refused_without_zip_says_what_to_do(self):
+        lone = os.path.join(self.tmp, "lone", os.path.basename(self.pkg))
+        os.makedirs(os.path.dirname(lone))
+        shutil.copyfile(self.pkg, lone)
+        shutil.copyfile(self.pkg + ".sha256", lone + ".sha256")
+        res, _ = self.go_at(lone, 12, SuperHosting)
+        ok, note = res["разархивиране на .tgz"]
+        self.assertIs(ok, False)
+        self.assertIn("няма .zip до пакета", note)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):

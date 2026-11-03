@@ -316,7 +316,9 @@ python3 apps/venue-3d/deploy.py deploy ~/sgradi/paketi/sgrada_….tgz --config ~
   (`X-Robots-Tag`); при качването проверката отвън иска noindex на страницата. Проверява
   `venue.json`: пътищата — само относителни в папката, моделът — до 5 MB (иначе предупреждение), `id` на
   точките. Не пише в непразна папка. `status.json` и config с ПИН-овете **не** влизат в пакета.
-- `package` и `deploy` са тези на организатора (`apps/organizer`): детерминиран `.tgz` със SHA-256;
+- `package` и `deploy` са тези на организатора (`apps/organizer`): детерминиран `.tgz` и същото като `.zip`,
+  всеки със SHA-256. На хостинг, който не разархивира `.tgz` (SuperHosting, `web1.varnahub.com`), качването само
+  минава на `.zip` и го казва; може и направо `deploy ПАКЕТ.zip`;
   без `--go` — само план; старата папка се преименува на `_ARHIV_<папка>_<време>`, нищо не се трие;
   маркер и проверка отвън. Config за качването — същият формат (`cpanel`, `user`, `token_file`,
   `public_html`, `dir`, `site_url`), извън репото; токенът — във файла или в `CPANEL_TOKEN`.

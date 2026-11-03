@@ -15,6 +15,7 @@ import tarfile
 import tempfile
 import time
 import unittest
+import zipfile
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -68,6 +69,10 @@ class FakeCpanel:
 
     def extract(self, archive, dest):
         self.calls.append(("extract", archive, dest))
+        if archive.endswith(".zip"):
+            with zipfile.ZipFile(self._p(archive)) as z:
+                z.extractall(self._p(dest))
+            return
         with tarfile.open(self._p(archive)) as t:
             t.extractall(self._p(dest), filter="data")
 
@@ -79,6 +84,15 @@ class FakeCpanel:
     def upload(self, d, path):
         self.calls.append(("upload", d, os.path.basename(path)))
         shutil.copyfile(path, os.path.join(self._p(d), os.path.basename(path)))
+
+
+class SuperHosting(FakeCpanel):
+    """cPanel, който не разархивира tgz — само zip (така беше на web1.varnahub.com)."""
+
+    def extract(self, archive, dest):
+        if archive.endswith(".tgz"):
+            raise deploy.org_deploy.CpanelError("Fileman::fileop: unsupported archive type")
+        super().extract(archive, dest)
 
 
 class Build(unittest.TestCase):
@@ -109,7 +123,9 @@ class Build(unittest.TestCase):
         hid, pub = os.path.join(self.tmp, "hid"), os.path.join(self.tmp, "pub")
         deploy.build(b, hid, form=True, hidden=True)
         deploy.build(b, pub, form=True)
-        read = lambda *p: open(os.path.join(*p), encoding="utf-8").read()  # noqa: E731
+        def read(*p):
+            with open(os.path.join(*p), encoding="utf-8") as f:
+                return f.read()
         self.assertIn('<meta name="robots" content="noindex, nofollow">', read(hid, "index.html"))
         self.assertIn('X-Robots-Tag "noindex, nofollow"', read(hid, ".htaccess"))
         self.assertNotIn("noindex", read(pub, "index.html"))
@@ -220,6 +236,27 @@ class Deploy(unittest.TestCase):
         self.assertIn("venue3d_config.php", form[2])
         st = next(s for s in steps if s[0].startswith("status.json"))
         self.assertIn("вече има нов запис", st[2])                                    # не пипа новия
+
+
+    def test_4_superhosting_tgz_refused_zip_used_status_kept(self):
+        self.write_config()
+        pub = os.path.join(self.home, "public_html", "sgrada")
+        with open(os.path.join(pub, "status.json"), "w") as f:
+            json.dump(self.status, f)
+        cp = SuperHosting(self.home)
+        logs = []
+        steps = deploy.deploy(self.pkg, self.cfg, go=True, client=cp, now=datetime(2026, 11, 3, 19, 0), log=logs.append,
+                              wait=lambda s: None)
+        self.assertEqual([s for s in steps if s[1] is False], [], "\n".join(logs))
+        self.assertTrue(any(n == "разархивиране на .tgz" and ".zip" in note for n, _, note in steps))
+        with open(os.path.join(pub, "status.json")) as f:
+            self.assertEqual(json.load(f), self.status)                                # пренесен и след zip
+        self.assertTrue(any(n == "формата за входа" and ok for n, ok, _ in steps))
+        self.assertTrue(any(n == "всички страници 200 и noindex" and ok for n, ok, _ in steps))
+
+    def test_5_package_cli_makes_zip_too(self):
+        self.assertTrue(os.path.exists(self.pkg[:-4] + ".zip"))
+        self.assertTrue(os.path.exists(self.pkg[:-4] + ".zip.sha256"))
 
 
 if __name__ == "__main__":
