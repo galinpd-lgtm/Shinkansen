@@ -8,10 +8,12 @@
 //     "hotspots": {
 //       "north": { "state": "open" },
 //       "east":  { "state": "busy", "note": { "bg": "Опашка около 10 минути.", "en": "About a 10-minute queue." } },
-//       "south": { "state": "closed" }
+//       "south": { "state": "closed", "updated": "2026-11-03T17:40:00+02:00" }
 //     }
 //   }
 //
+// `updated` на точка (по избор) е кога е проверена тя; без него важи общият. Така обновяването на един вход
+// не прави пресни и другите — формата за входа (php/vhod.php) пише час на всяка точка.
 // Остарелите данни не се показват като състояние: „отворен“ от вчера е по-лошо от нищо.
 // "max_age_min": null — без срок; само за неподвижен пример (демото), не за истинска сграда.
 
@@ -61,22 +63,37 @@ export function parseStatus(raw, hotspotIds = []) {
     if (!isObj(v) || !STATES.includes(v.state)) { errors.push(`${where}.state: едно от ${STATES.join(', ')}`); continue; }
     const note = v.note != null ? parseNote(v.note) : null;
     if (v.note != null && !note) warnings.push(`${where}.note: трябва текст (bg и/или en) — пропуска се`);
-    states.set(id, { state: v.state, note });
+    let own = updated;
+    if (v.updated != null) {
+      own = typeof v.updated === 'string' && ISO_WITH_ZONE.test(v.updated) ? Date.parse(v.updated) : NaN;
+      if (!Number.isFinite(own)) { errors.push(`${where}.updated: трябва ISO време с часова зона`); continue; }
+    }
+    states.set(id, { state: v.state, note, updated: own, updatedIso: v.updated ?? raw.updated });
   }
   return { status: { updated, updatedIso: raw.updated, maxAgeMin: maxAge, states }, errors, warnings };
 }
 
-/** Колко минути са минали от записа и пресни ли са данните към момента `now` (ms). */
-export function statusAge(status, now = Date.now()) {
-  if (!status) return { fresh: false, ageMin: null };
-  const ageMin = (now - status.updated) / 60000;
+function age(at, maxAgeMin, now) {
+  const ageMin = (now - at) / 60000;
   // малко напред във времето (разминаване на часовниците) се приема; много напред — не
-  const fresh = ageMin > -5 && (status.maxAgeMin === null || ageMin <= status.maxAgeMin);
-  return { fresh, ageMin };
+  return { fresh: ageMin > -5 && (maxAgeMin === null || ageMin <= maxAgeMin), ageMin };
 }
 
-/** Състоянието на точка, ако данните са пресни; иначе null (точката се показва без състояние). */
+/** Колко минути са минали от последния запис във файла и пресен ли е той към момента `now` (ms). */
+export function statusAge(status, now = Date.now()) {
+  if (!status) return { fresh: false, ageMin: null };
+  return age(status.updated, status.maxAgeMin, now);
+}
+
+/** Състоянието на точка, ако е проверена в срока (по своя час, иначе по общия); иначе null. */
 export function stateOf(status, id, now = Date.now()) {
-  if (!statusAge(status, now).fresh) return null;
-  return status.states.get(id) || null;
+  const st = status?.states.get(id);
+  if (!st || !age(st.updated, status.maxAgeMin, now).fresh) return null;
+  return st;
+}
+
+/** Точките със записано, но остаряло състояние — за бележката под сцената. */
+export function staleIds(status, now = Date.now()) {
+  if (!status) return [];
+  return [...status.states].filter(([, st]) => !age(st.updated, status.maxAgeMin, now).fresh).map(([id]) => id);
 }

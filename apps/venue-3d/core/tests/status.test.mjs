@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseVenue } from '../venue-data.js';
-import { parseStatus, statusAge, stateOf, STATES, DEFAULT_MAX_AGE_MIN } from '../status.js';
+import { parseStatus, statusAge, stateOf, staleIds, STATES, DEFAULT_MAX_AGE_MIN } from '../status.js';
 
 const at = (p) => new URL(p, import.meta.url);
 const read = (p) => JSON.parse(readFileSync(at(p), 'utf8'));
@@ -90,4 +90,23 @@ test('всеки относителен внос в core/ сочи към фай
       readFileSync(new URL(spec, at(`../${f}`)));   // хвърля, ако файлът липсва
     }
   }
+});
+
+test('час на всяка точка: обновяването на един вход не прави пресни другите', () => {
+  const { status, errors } = parseStatus(base({
+    updated: '2026-11-03T18:00:00+02:00',
+    hotspots: {
+      north: { state: 'open', updated: '2026-11-03T18:00:00+02:00' },
+      south: { state: 'closed', updated: '2026-11-03T16:00:00+02:00' },   // проверен преди 2 часа
+      east: { state: 'busy' },                                            // без свой час — общият
+      west_wing: { state: 'open', updated: 'преди малко' },
+    },
+  }), IDS);
+  assert.ok(errors.some((e) => e.includes('west_wing.updated')));
+  assert.equal(stateOf(status, 'north', min(5)).state, 'open');
+  assert.equal(stateOf(status, 'east', min(5)).state, 'busy');
+  assert.equal(stateOf(status, 'south', min(5)), null);
+  assert.deepEqual(staleIds(status, min(5)), ['south']);
+  assert.deepEqual(staleIds(status, min(40)).sort(), ['east', 'north', 'south']);
+  assert.equal(stateOf(status, 'north', min(5)).updatedIso, '2026-11-03T18:00:00+02:00');
 });

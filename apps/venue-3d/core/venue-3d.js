@@ -30,7 +30,7 @@ import {
 } from './venue-data.js';
 import { buildParts } from './skeleton-geometry.js';
 import { pickMoment, eventChoices, forecastUsable, skyLook, sunVector } from './sky.js';
-import { parseStatus, statusAge, stateOf } from './status.js';
+import { parseStatus, stateOf, staleIds } from './status.js';
 
 const T = {
   bg: {
@@ -47,6 +47,7 @@ const T = {
     dirs: ['С', 'СИ', 'И', 'ЮИ', 'Ю', 'ЮЗ', 'З', 'СЗ'],
     state: { open: 'Отворен', busy: 'Опашка', closed: 'Затворен' }, asOf: (t) => `към ${t}`,
     stale: (t) => `Състоянието на входовете е от ${t} — може вече да не е вярно.`,
+    staleSome: (n) => `${n === 1 ? 'Една точка не е проверена' : `${n} точки не са проверени`} скоро — състоянието им не се показва.`,
   },
   en: {
     kind: { entrance: 'Entrance', accessible_entrance: 'Step-free entrance', ticket_office: 'Box office', parking: 'Car park', transit_stop: 'Stop', info: 'Information' },
@@ -62,6 +63,7 @@ const T = {
     dirs: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
     state: { open: 'Open', busy: 'Queue', closed: 'Closed' }, asOf: (t) => `as of ${t}`,
     stale: (t) => `Entrance status is from ${t} — it may be out of date.`,
+    staleSome: (n) => `${n === 1 ? 'One point has' : `${n} points have`} not been checked recently — status not shown.`,
   },
 };
 // знак за вида точка — само текст, без изображения
@@ -647,10 +649,10 @@ function defineElement() {
 
     stateColor(state) { return this.cssColor(...STATE_VAR[state]); }
 
-    /** Часът на записа в часовата зона, в която е записан. */
-    statusTime() {
-      return new Date(this.status.updated).toLocaleTimeString(this.lang_ === 'en' ? 'en-GB' : 'bg-BG',
-        { hour: '2-digit', minute: '2-digit', timeZone: tzOf(this.status.updatedIso) });
+    /** Час на запис (ms) в часовата зона, в която е записан (по ISO низа му). */
+    statusTime(at = this.status.updated, iso = this.status.updatedIso) {
+      return new Date(at).toLocaleTimeString(this.lang_ === 'en' ? 'en-GB' : 'bg-BG',
+        { hour: '2-digit', minute: '2-digit', timeZone: tzOf(iso) });
     }
 
     /** Точиците, картата, списъкът, светването на възлите и бележката за остарели данни. */
@@ -685,8 +687,10 @@ function defineElement() {
 
     /** Бележка за реда за състоянието, когато status.json е зададен, но данните му са остарели. */
     staleNote() {
-      if (!this.status || statusAge(this.status).fresh) return '';
-      return this.tx.stale(this.statusTime());
+      const stale = staleIds(this.status);
+      if (!stale.length) return '';
+      // всички записани са остарели — от кога е последното; иначе — колко не се показват
+      return stale.length === this.status.states.size ? this.tx.stale(this.statusTime()) : this.tx.staleSome(stale.length);
     }
 
     /** Цветната точица на състоянието (празно без състояние). */
@@ -700,7 +704,7 @@ function defineElement() {
     stateHtml(h) {
       const st = this.stateFor(h);
       if (!st) return '';
-      return `${this.dotHtml(st)}${esc(this.tx.state[st.state])} <small>· ${esc(this.tx.asOf(this.statusTime()))}</small>`;
+      return `${this.dotHtml(st)}${esc(this.tx.state[st.state])} <small>· ${esc(this.tx.asOf(this.statusTime(st.updated, st.updatedIso)))}</small>`;
     }
 
     // ---------------------------------------------------------------- кадър

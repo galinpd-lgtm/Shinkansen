@@ -81,11 +81,12 @@ jobs:
           find _site -type f | sort
 
       - id: v3d_tests
-        name: Сграда в 3D — тестове (Python и JS, без Blender)
+        name: Сграда в 3D — тестове (Python, PHP и JS, без Blender)
         continue-on-error: true
         working-directory: apps/venue-3d
         run: |
           python3 -m unittest discover -s blender/tests
+          python3 -m unittest discover -s php/tests      # формата за входа през php -S (runner-ът има php)
           node --test core/tests/*.test.mjs
 
       - name: Сграда в 3D — сглобяване под /3d/
