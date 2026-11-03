@@ -12,6 +12,10 @@
 // като небе и светлина, и истинското слънце по астрономия — със сенки в правилната посока спрямо north_deg.
 // Без атрибута forecast всичко е както преди.
 //
+// По желание състоянието на входовете в момента:  <venue-3d src="venue.json" status="status.json" refresh="60">
+// Отворен / опашка / затворен — точица на точката, дума в картата и списъка, оцветен възел на входа в 3D.
+// Чете се отново на всеки `refresh` секунди (0 — само веднъж). Остарелите данни не се показват като състояние.
+//
 // Моделът може да е компресиран с Draco (blender/prepare_glb.py): декодерът е вграден в ../vendor/three и се
 // зарежда само тогава. Цветовете идват от материалите в glb. При "north_deg": null няма компас, слънце и сенки.
 
@@ -26,6 +30,7 @@ import {
 } from './venue-data.js';
 import { buildParts } from './skeleton-geometry.js';
 import { pickMoment, eventChoices, forecastUsable, skyLook, sunVector } from './sky.js';
+import { parseStatus, statusAge, stateOf } from './status.js';
 
 const T = {
   bg: {
@@ -40,6 +45,8 @@ const T = {
     noScene: 'няма прогноза за този час', night: 'нощ', twilight: 'здрач',
     sunUp: (el, az, dir) => `слънце ${el}° над хоризонта, от ${dir} (${az}°)`, sunDown: 'слънцето е под хоризонта',
     dirs: ['С', 'СИ', 'И', 'ЮИ', 'Ю', 'ЮЗ', 'З', 'СЗ'],
+    state: { open: 'Отворен', busy: 'Опашка', closed: 'Затворен' }, asOf: (t) => `към ${t}`,
+    stale: (t) => `Състоянието на входовете е от ${t} — може вече да не е вярно.`,
   },
   en: {
     kind: { entrance: 'Entrance', accessible_entrance: 'Step-free entrance', ticket_office: 'Box office', parking: 'Car park', transit_stop: 'Stop', info: 'Information' },
@@ -53,6 +60,8 @@ const T = {
     noScene: 'no forecast for this hour', night: 'night', twilight: 'twilight',
     sunUp: (el, az, dir) => `sun ${el}° above the horizon, from the ${dir} (${az}°)`, sunDown: 'the sun is below the horizon',
     dirs: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
+    state: { open: 'Open', busy: 'Queue', closed: 'Closed' }, asOf: (t) => `as of ${t}`,
+    stale: (t) => `Entrance status is from ${t} — it may be out of date.`,
   },
 };
 // знак за вида точка — само текст, без изображения
@@ -65,6 +74,8 @@ const MATERIAL_VAR = {
   building: ['--v3d-building', '#b9bec6'], roof: ['--v3d-roof', '#72849b'], pylon: ['--v3d-pylon', '#dcdfe3'],
   wing: ['--v3d-wing', '#a7adb5'], accent: ['--v3d-entrance', '#d9772b'], door: ['--v3d-door', '#2b3038'],
 };
+// цветът на състоянието: точицата на точката, думата в картата, светването на възела в 3D
+const STATE_VAR = { open: ['--v3d-state-open', '#2f9e5b'], busy: ['--v3d-state-busy', '#d99a1e'], closed: ['--v3d-state-closed', '#c8412f'] };
 const FADED = 0.14;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const v3 = (p) => new THREE.Vector3(...planToThree(p));
@@ -108,6 +119,11 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   color: #fff; font-weight: 700; font-size: .8rem; background: var(--_pin, var(--_accent));
 }
 .pin[hidden] { display: none; }
+.pin .st, nav .st { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--_st); box-shadow: 0 0 0 2px var(--v3d-pin-bg, #fff); }
+nav .st { margin-left: auto; }
+.card .state { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin-top: 6px; }
+.card .state .st { width: 10px; height: 10px; border-radius: 50%; background: var(--_st); }
+.card .state small { font-weight: 400; color: var(--_muted); }
 .pin.occluded { opacity: 0; pointer-events: none; }
 .pin[aria-pressed="true"] { outline: 2px solid var(--_accent); outline-offset: 1px; }
 .pin:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
@@ -187,7 +203,7 @@ function formatStart(iso, lang) {
 
 function defineElement() {
   class Venue3D extends HTMLElement {
-    static get observedAttributes() { return ['src', 'lang', 'forecast', 'event']; }
+    static get observedAttributes() { return ['src', 'lang', 'forecast', 'event', 'status', 'refresh']; }
 
     constructor() {
       super();
@@ -228,6 +244,7 @@ function defineElement() {
 
     disconnectedCallback() {
       cancelAnimationFrame(this.raf);
+      clearInterval(this.statusTimer);
       this.ro?.disconnect();
       this.controls?.dispose();
       this.renderer?.dispose();
@@ -239,6 +256,7 @@ function defineElement() {
       if (name === 'lang') this.renderTexts();
       else if (name === 'forecast') this.loadForecast();
       else if (name === 'event') { this.skyIndex = Number(val) || 0; this.applySky(); }
+      else if (name === 'status' || name === 'refresh') this.startStatus();
       else this.load();
     }
 
@@ -280,6 +298,7 @@ function defineElement() {
       if (!northPlan(venue).sun) console.warn('venue-3d: north_deg е null (северът не е потвърден) — без компас; слънцето и сенките от forecast.json не се рисуват, защото посоката им би била измислена');
       this.goHome(true);
       this.loadForecast();
+      this.startStatus();
     }
 
     /** Редът за състоянието: съобщението (зареждане, временен модел…) и бележката за непотвърден север. */
@@ -287,7 +306,7 @@ function defineElement() {
       this.statusText = text || '';
       const note = this.venue ? northPlan(this.venue, this.lang_).note : '';
       const s = this.$('.status');
-      s.textContent = [this.statusText, note].filter(Boolean).join(' · ');
+      s.textContent = [this.statusText, note, this.staleNote?.()].filter(Boolean).join(' · ');
       s.hidden = !s.textContent;
     }
 
@@ -595,6 +614,95 @@ function defineElement() {
       return `${time} · ${scene}${part} · ${sun}`;
     }
 
+    // ---------------------------------------------------------------- състояние на входовете (по желание, от status.json)
+
+    /** Чете status.json сега и после на всеки `refresh` секунди; без `refresh` (0) часовникът само проверява остаряването. */
+    startStatus() {
+      clearInterval(this.statusTimer);
+      this.status = null;
+      if (!this.getAttribute('status') || !this.venue) { this.renderStatus(); return; }
+      const raw = this.getAttribute('refresh');
+      const refresh = raw === null || raw === '' ? 60 : Math.max(0, Number(raw) || 0);
+      const every = refresh ? Math.max(15, refresh) : 60;
+      this.statusTimer = setInterval(() => (refresh ? this.loadStatus() : this.renderStatus()), every * 1000);
+      this.loadStatus();
+    }
+
+    async loadStatus() {
+      const src = this.getAttribute('status');
+      try {
+        const raw = await (await fetch(new URL(src, document.baseURI).href, { cache: 'no-store' })).json();
+        const { status, errors, warnings } = parseStatus(raw, this.venue.hotspots.map((h) => h.id));
+        for (const m of [...errors, ...warnings]) console.warn(`venue-3d: ${m}`);
+        if (status) this.status = status;
+      } catch (e) {
+        // при грешка остава последното прочетено — то само ще остарее и ще се скрие
+        console.warn('venue-3d: status.json не се зареди', e);
+      }
+      this.renderStatus();
+    }
+
+    /** Текущото състояние на точка (null — няма данни или са остарели). */
+    stateFor(h) { return stateOf(this.status, h.id); }
+
+    stateColor(state) { return this.cssColor(...STATE_VAR[state]); }
+
+    /** Часът на записа в часовата зона, в която е записан. */
+    statusTime() {
+      return new Date(this.status.updated).toLocaleTimeString(this.lang_ === 'en' ? 'en-GB' : 'bg-BG',
+        { hour: '2-digit', minute: '2-digit', timeZone: tzOf(this.status.updatedIso) });
+    }
+
+    /** Точиците, картата, списъкът, светването на възлите и бележката за остарели данни. */
+    renderStatus() {
+      if (!this.venue) return;
+      // възлите на входовете светват в цвета на състоянието (само ако ги има в модела)
+      for (const h of this.venue.hotspots) {
+        const node = h.node && this.model?.getObjectByName(h.node);
+        if (!node) continue;
+        const st = this.stateFor(h);
+        const color = st ? this.stateColor(st.state) : null;
+        node.traverse((m) => {
+          if (!m.isMesh) return;
+          for (const mat of [].concat(m.material)) {
+            if (!mat.emissive) continue;
+            mat.userData.baseEmissive ??= mat.emissive.clone();
+            mat.userData.baseEmissiveIntensity ??= mat.emissiveIntensity;
+            if (color) { mat.emissive.copy(color); mat.emissiveIntensity = 0.55; }
+            else { mat.emissive.copy(mat.userData.baseEmissive); mat.emissiveIntensity = mat.userData.baseEmissiveIntensity; }
+          }
+        });
+      }
+      this.dirty = true;
+      // обновяването на всяка минута не бива да отнема фокуса на човек, който върви по списъка или картата
+      const active = this.shadowRoot.activeElement;
+      const listId = active?.closest('nav') ? active.dataset.id : null;
+      const inCard = !!active?.closest('.card');
+      this.renderTexts();
+      if (listId) [...this.shadowRoot.querySelectorAll('nav button')].find((b) => b.dataset.id === listId)?.focus({ preventScroll: true });
+      else if (inCard) this.$('.card [data-act=close]')?.focus({ preventScroll: true });
+    }
+
+    /** Бележка за реда за състоянието, когато status.json е зададен, но данните му са остарели. */
+    staleNote() {
+      if (!this.status || statusAge(this.status).fresh) return '';
+      return this.tx.stale(this.statusTime());
+    }
+
+    /** Цветната точица на състоянието (празно без състояние). */
+    dotHtml(st) {
+      if (!st) return '';
+      const [v, fb] = STATE_VAR[st.state];
+      return `<span class="st" aria-hidden="true" style="--_st: var(${v}, ${fb})"></span>`;
+    }
+
+    /** За картата: точица, думата и часа на записа. */
+    stateHtml(h) {
+      const st = this.stateFor(h);
+      if (!st) return '';
+      return `${this.dotHtml(st)}${esc(this.tx.state[st.state])} <small>· ${esc(this.tx.asOf(this.statusTime()))}</small>`;
+    }
+
     // ---------------------------------------------------------------- кадър
 
     frame(now) {
@@ -830,8 +938,11 @@ function defineElement() {
     showCard(h) {
       const tx = this.tx, card = this.$('.card');
       const lv = this.venue.levels.find((l) => l.id === h.level);
+      const st = this.stateFor(h);
       card.innerHTML = `<h3>${esc(localText(h.name, this.lang_))}</h3>
         <div class="meta">${esc(tx.kind[h.kind])}${lv ? ` · ${esc(localText(lv.name, this.lang_))}` : ''}</div>
+        ${st ? `<div class="state">${this.stateHtml(h)}</div>` : ''}
+        ${st?.note ? `<p>${esc(localText(st.note, this.lang_))}</p>` : ''}
         ${h.description ? `<p>${esc(localText(h.description, this.lang_))}</p>` : ''}
         <button type="button" data-act="close">${tx.close}</button>`;
       card.hidden = false;
@@ -953,9 +1064,10 @@ function defineElement() {
       this.$('nav h3').textContent = tx.list;
       this.$('nav ul').innerHTML = sortHotspots(this.venue.hotspots, lang).map((h) => {
         const lv = this.venue.levels.find((l) => l.id === h.level);
+        const st = this.stateFor(h);
         return `<li><button type="button" data-id="${esc(h.id)}" aria-current="${h.id === s.selected}" style="--_pin: var(${PIN_VAR[h.kind]}, var(--_accent))">
           <i aria-hidden="true">${GLYPH[h.kind]}</i><span>${esc(localText(h.name, lang))}
-          <small>${esc(tx.kind[h.kind])}${lv ? ` · ${esc(localText(lv.name, lang))}` : ''}</small></span></button></li>`;
+          <small>${esc(tx.kind[h.kind])}${lv ? ` · ${esc(localText(lv.name, lang))}` : ''}${st ? ` · ${esc(tx.state[st.state])}` : ''}</small></span>${this.dotHtml(st)}</button></li>`;
       }).join('');
       this.$('nav ul').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => this.select(b.dataset.id)));
       this.renderPinTexts();
@@ -969,8 +1081,10 @@ function defineElement() {
       for (const h of this.venue.hotspots) {
         const b = this.pinEls.get(h.id);
         const name = localText(h.name, this.lang_);
-        b.innerHTML = `<i aria-hidden="true">${GLYPH[h.kind]}</i><span>${esc(name)}</span>`;
-        b.setAttribute('aria-label', `${this.tx.kind[h.kind]}: ${name}`);
+        const st = this.stateFor(h);
+        b.innerHTML = `<i aria-hidden="true">${GLYPH[h.kind]}</i><span>${esc(name)}</span>${this.dotHtml(st)}`;
+        b.dataset.state = st ? st.state : '';
+        b.setAttribute('aria-label', `${this.tx.kind[h.kind]}: ${name}${st ? ` — ${this.tx.state[st.state]}` : ''}`);
         b.setAttribute('aria-pressed', String(h.id === this.state.selected));
       }
     }
