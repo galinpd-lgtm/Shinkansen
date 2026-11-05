@@ -106,8 +106,8 @@ php apps/organizer/php/tests/validate_test.php
 | 4 | Демата | `organizer.py demo-import ПАПКА резултати.json --words думи.txt` | „Проба на …: минала · 5,7 s · до 60 °C“ под демото на всяка тема; бележките минават през филтъра |
 | 5 | Сглобяване | `organizer.py build ПАПКА САЙТ` | сайтът; спира при счупена връзка или забранен текст |
 | 6 | Проверка A5 | `organizer.py qa ПАПКА ОТЧЕТ` | `qa_report.md` + снимки 360/1440 px; въпросниците на живо (PHP + SQLite) |
-| 7 | Пакет | `organizer.py package САЙТ ПАКЕТИ --prev ПРЕДИШЕН.tgz` | `.tgz`, `.sha256`, `.manifest.txt`, `.diff.txt` („сменен tema-12…“) |
-| 8 | План за качване | `organizer.py deploy ПАКЕТ.tgz --config deploy.json` | само показва: връзка, `.htaccess`, какво ще се преименува и качи |
+| 7 | Пакет | `organizer.py package САЙТ ПАКЕТИ --prev ПРЕДИШЕН.tgz` | `.tgz` и същото като `.zip` (всеки със `.sha256`), `.manifest.txt`, `.diff.txt` („сменен tema-12…“) |
+| 8 | План за качване | `organizer.py deploy ПАКЕТ.tgz --config deploy.json` | само показва: връзка, `.htaccess`, какво ще се преименува и качи; приема и `ПАКЕТ.zip` |
 | 9 | Качване (след „go“) | `… deploy … --go --htaccess-ok` | A6: архив на старото, качване, маркер, проверка отвън, тестов отговор |
 | 10 | Заключване | cPanel → Directory Privacy за `admin/` | веднага след т. 9 |
 | 11 | Обратна връзка | `organizer.py feedback --url …/admin/export.php?form=ID --spec САЙТ/api/forms.json --out обобщение.md` | броене по отговор, свободните текстове; без личните полета |
@@ -139,3 +139,8 @@ phpMyAdmin, config файлът с паролата над `public_html`, API т
 ## Ниво
 
 чернови — сглобява, проверява и пакетира в папки. `deploy` без `--go` само чете; с `--go` действа, но само след „go“ от човек и без да трие.
+
+**Хостинг, който не разархивира `.tgz`** (SuperHosting): `package` прави до `.tgz` и детерминиран `.zip` със
+същото съдържание. Ако cPanel откаже `.tgz` (или след разархивирането липсват страници), `deploy` проверява
+SHA-256 и съдържанието на `.zip` до пакета, качва него и го казва в отчета („разархивиране на .tgz — … →
+минавам на ….zip“). Може и направо: `deploy ПАКЕТ.zip`.

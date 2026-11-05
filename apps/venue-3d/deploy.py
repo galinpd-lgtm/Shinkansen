@@ -1,9 +1,11 @@
 """Страницата на една сграда — сглобяване, пакет и качване в cPanel.
 
     python3 apps/venue-3d/deploy.py build СГРАДА ИЗХОД [--form]      # папка за качване
-    python3 apps/venue-3d/deploy.py package ИЗХОД --out ПАКЕТИ          # детерминиран .tgz + .sha256
+    python3 apps/venue-3d/deploy.py package ИЗХОД --out ПАКЕТИ          # детерминиран .tgz и .zip, всеки с .sha256
     python3 apps/venue-3d/deploy.py deploy ПАКЕТ.tgz --config ~/.config/venue3d/deploy.json   # само план
     python3 apps/venue-3d/deploy.py deploy ПАКЕТ.tgz --config … --go [--htaccess-ok]
+    (или ПАКЕТ.zip направо — за хостинг, чийто cPanel не разархивира .tgz, напр. SuperHosting;
+     при .tgz, който не се разархивира, качването само минава на .zip до него)
 
 СГРАДА е папка извън репото: venue.json и файловете, към които той сочи (model.glb, skeleton.json).
 Влиза само това — нищо друго от папката не стига до сървъра.
@@ -207,7 +209,6 @@ def after_deploy(pkg_names, cfg, client, archive, log=print, get=None):
 def deploy(pkg, cfg, go=False, htaccess_ok=False, client=None, now=None, log=print, wait=lambda s: time.sleep(s),
            get=None):
     """Качването на организатора (без тестов отговор) + стъпките за сградата."""
-    import tarfile
     now = now or datetime.now()
     cp = client or org_deploy.Cpanel(cfg["cpanel"], cfg["user"], cfg["_token"])
     root = cfg["public_html"].strip("/")
@@ -226,9 +227,7 @@ def deploy(pkg, cfg, go=False, htaccess_ok=False, client=None, now=None, log=pri
             log("· след качването: status.json се пренася от старата папка; проверка на формата за входа")
         return steps
     archive = "_ARHIV_%s_%s" % (cfg["dir"], now.strftime("%Y-%m-%d_%H%M")) if existed else None
-    with tarfile.open(pkg) as t:
-        names = set(t.getnames())
-    return steps + after_deploy(names, cfg, cp, archive, log=log, get=get)
+    return steps + after_deploy(set(ops.archive_names(pkg)), cfg, cp, archive, log=log, get=get)
 
 
 def main(argv=None):
@@ -240,7 +239,7 @@ def main(argv=None):
     b.add_argument("--form", action="store_true", help="с формата за входа (vhod/) и status=\"status.json\"")
     b.add_argument("--refresh", type=int, default=60, help="колко често страницата чете status.json, секунди")
     b.add_argument("--hidden", action="store_true", help="само с връзка: noindex в страницата и в заглавките")
-    k = sub.add_parser("package", help="детерминиран .tgz + .sha256 (както организатора)")
+    k = sub.add_parser("package", help="детерминиран .tgz и .zip, всеки с .sha256 (както организатора)")
     k.add_argument("site")
     k.add_argument("--out", required=True)
     k.add_argument("--name", default="sgrada")
@@ -272,8 +271,8 @@ def main(argv=None):
         except (OSError, ValueError) as e:
             print("package: %s" % e, file=sys.stderr)
             return 1
-        print("%s %s (%d файла, %.2f MB)" % ("вече го има:" if r["existed"] else "OK", r["tgz"], r["files"],
-                                            r["bytes"] / 1048576))
+        print("%s %s (%d файла, %.2f MB)\n   и %s" % ("вече го има:" if r["existed"] else "OK", r["tgz"], r["files"],
+                                                   r["bytes"] / 1048576, r["zip"]))
         return 0
     try:
         cfg = org_deploy.load_config(args.config)
