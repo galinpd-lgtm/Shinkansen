@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 15
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url }}
     defaults:
       run:
         working-directory: apps/zhivo-nebe
@@ -126,7 +126,20 @@ jobs:
           path: apps/zhivo-nebe/_site
           include-hidden-files: true   # от v4 скритите файлове се пропускат; organizer/.htaccess да остане
 
+      # Понякога GitHub още не „вижда“ току-що качения артефакт и deploy-pages пада с
+      # „No artifacts named github-pages were found“ (08.10, 23.10 и 09.11.2026). Тогава — втори опит след пауза.
       - id: deploy
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Пауза преди втория опит за публикуване
+        if: steps.deploy.outcome == 'failure'
+        working-directory: .
+        run: sleep 45
+
+      - id: deploy2
+        name: Публикуване — втори опит
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
 
       - name: Отчет за 3D демото
